@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+release/*
+!release/.gitkeep
+.env
+.env.*
+!.env.example
+.local/
+coverage/
+test-results/
+playwright-report/
+*.log
+*.tsbuildinfo

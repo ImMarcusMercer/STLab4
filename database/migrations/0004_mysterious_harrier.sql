@@ -1,0 +1,2 @@
+ALTER TABLE "invoices" DROP CONSTRAINT "adjustment_centavos_nonnegative";--> statement-breakpoint
+ALTER TABLE "invoices" ADD CONSTRAINT "adjustment_centavos_signed" CHECK ("invoices"."adjustment_centavos" >= -999999999 AND "invoices"."adjustment_centavos" <= 999999999);

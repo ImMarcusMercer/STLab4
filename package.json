@@ -1,0 +1,72 @@
+{
+  "name": "bcis-subscription-billing-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BCIS subscription billing and collection desktop system",
+  "type": "module",
+  "main": "out/main/index.js",
+  "engines": {
+    "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,desktop \"npm:dev:api\" \"npm:dev:desktop\"",
+    "dev:api": "tsx watch source/api/server.ts",
+    "dev:desktop": "node scripts/desktop.mjs dev",
+    "start:api": "tsx source/api/server.ts",
+    "start": "node scripts/desktop.mjs preview",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:seed": "tsx scripts/seed-admin.ts",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "db:setup": "node scripts/local-db.mjs setup",
+    "db:start": "node scripts/local-db.mjs start",
+    "db:stop": "node scripts/local-db.mjs stop",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx database/migrate.ts",
+    "test:db": "tsx scripts/check-database.ts",
+    "test:e2e": "playwright test",
+    "package:win": "npm run build && electron-builder --win --dir"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "10.3.0",
+    "dotenv": "18.0.4",
+    "drizzle-orm": "0.45.3",
+    "fastify": "5.12.5",
+    "lucide-react": "1.48.0",
+    "pg": "8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.6.3",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "concurrently": "10.0.5",
+    "drizzle-kit": "0.31.11",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vite": "7.3.6",
+    "vitest": "5.0.2"
+  }
+}
