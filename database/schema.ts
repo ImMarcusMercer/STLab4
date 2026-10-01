@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid, boolean, primaryKey, index, jsonb, integer, date, check, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { invoiceStatusValues, invoiceItemTypeValues, ledgerReferenceValues } from '../source/shared/billing';
 import { paymentMethodValues, paymentStatusValues, allocationSourceValues, proofMimeValues } from '../source/shared/payments';
+import { batchStatusValues, documentSequenceKinds } from '../source/shared/collections';
 
 // Workflow-owned domain tables are introduced with their respective phases.
 export const applicationMetadata = pgTable('application_metadata', {
@@ -84,7 +85,7 @@ export const documentSequences = pgTable('document_sequences', {
   nextValue: integer('next_value').notNull().default(1001),
 }, t => [
   primaryKey({ columns: [t.kind, t.year] }),
-  oneOf('document_sequence_kind', t.kind, ['INVOICE', 'RECEIPT']),
+  oneOf('document_sequence_kind', t.kind, documentSequenceKinds),
   check('document_sequence_start', sql`${t.nextValue} >= 1001`),
 ]);
 
@@ -232,6 +233,9 @@ export const payments = pgTable('payments', {
   notes: text('notes').notNull().default(''),
   reason: text('reason').notNull().default(''),
   reversalOfId: uuid('reversal_of_id').references((): AnyPgColumn => payments.id, { onDelete: 'restrict' }),
+  // The route sheet this money was collected on. It is part of the identity of the entry, so
+  // it can never be re-pointed, and every batch figure is derived from the rows that carry it.
+  collectionBatchId: uuid('collection_batch_id').references(() => collectionBatches.id, { onDelete: 'restrict' }),
   recordedBy: uuid('recorded_by').notNull().references(() => users.id),
   verifiedBy: uuid('verified_by').references(() => users.id),
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
@@ -243,6 +247,7 @@ export const payments = pgTable('payments', {
 }, t => [
   index('payments_subscriber_idx').on(t.subscriberId, t.receivedOn),
   index('payments_status_idx').on(t.status, t.receivedOn),
+  index('payments_batch_idx').on(t.collectionBatchId, t.status),
   uniqueIndex('payments_gcash_reference_idx').on(t.referenceNumber).where(sql`${t.method} = 'GCASH' AND ${t.status} <> 'VOID'`),
   oneOf('payment_method', t.method, paymentMethodValues),
   oneOf('payment_status', t.status, paymentStatusValues),
@@ -297,4 +302,92 @@ export const paymentProofs = pgTable('payment_proofs', {
   check('payment_proof_byte_size', sql`${t.byteSize} >= 1 AND ${t.byteSize} <= 5242880`),
   check('payment_proof_digest', sql`${t.sha256} ~ '^[a-f0-9]{64}$'`),
   check('payment_proof_stored_name', sql`${t.storedName} ~ '^[a-f0-9-]{36}\\.(png|jpg|pdf)$'`),
+]);
+
+// Collections. A batch is one day's route for one collector in one area. The account lines
+// and the amounts that were due are frozen into the batch when it is opened, so the sheet the
+// collector carries is the sheet the office reconciles against. Nothing is ever added to a
+// frozen list: every collected figure is derived from the posted payments carrying the batch,
+// which is what keeps a batch and the payment ledger from ever disagreeing. The lifecycle is
+// a straight line enforced by a trigger, so no state can be skipped or moved backwards.
+export const collectionBatches = pgTable('collection_batches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Gap-free like an invoice number, so a sheet proves which document it belongs to.
+  batchNumber: text('batch_number').notNull().unique(),
+  status: text('status').notNull(),
+  collectorId: uuid('collector_id').notNull().references(() => collectors.id),
+  areaId: uuid('area_id').notNull().references(() => collectionAreas.id),
+  collectionDate: date('collection_date').notNull(),
+  notes: text('notes').notNull().default(''),
+  // Each step is stamped when it is taken, so a batch carries its own trail without an audit
+  // query, and the reconciliation keeps the person and the written reason.
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  remittedAt: timestamp('remitted_at', { withTimezone: true }),
+  reconciledAt: timestamp('reconciled_at', { withTimezone: true }),
+  reconciledBy: uuid('reconciled_by').references(() => users.id),
+  reconciliationNotes: text('reconciliation_notes').notNull().default(''),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [
+  index('collection_batches_status_idx').on(t.status, t.collectionDate),
+  index('collection_batches_collector_idx').on(t.collectorId, t.collectionDate),
+  index('collection_batches_area_idx').on(t.areaId, t.collectionDate),
+  uniqueIndex('collection_batches_route_idx').on(t.collectorId, t.areaId, t.collectionDate),
+  oneOf('collection_batch_status', t.status, batchStatusValues),
+  check('collection_batch_number', sql`${t.batchNumber} ~ '^BCH-[0-9]{4}-[0-9]{4}$'`),
+]);
+
+/** The frozen route. Written once when the batch is opened and then never changed. */
+export const batchAccounts = pgTable('batch_accounts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => collectionBatches.id, { onDelete: 'restrict' }),
+  subscriberId: uuid('subscriber_id').notNull().references(() => subscribers.id),
+  // The name and the address are copied, not joined, so a later rename cannot rewrite the sheet
+  // a collector already carried.
+  subscriberCode: text('subscriber_code').notNull(),
+  subscriberName: text('subscriber_name').notNull(),
+  address: text('address').notNull().default(''),
+  currentBillCentavos: money('current_bill_centavos'),
+  arrearsCentavos: money('arrears_centavos'),
+  totalDueCentavos: money('total_due_centavos'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [
+  uniqueIndex('batch_accounts_batch_subscriber_idx').on(t.batchId, t.subscriberId),
+  index('batch_accounts_batch_idx').on(t.batchId),
+  check('batch_account_total', sql`${t.totalDueCentavos} = ${t.currentBillCentavos} + ${t.arrearsCentavos}`),
+  moneyBounds(t.currentBillCentavos), moneyBounds(t.arrearsCentavos), moneyBounds(t.totalDueCentavos),
+]);
+
+/**
+ * What the collector handed in, counted once. The three checks below pin the whole of
+ * AT-07 and AT-08 arithmetic: the recorded difference must equal the expected cash less the
+ * cash remitted, a shortage and an overage can never both be claimed, and the balanced flag
+ * can only be true when the two are both zero. A remittance that does not match therefore
+ * stays visible as an explicit shortage or overage instead of being balanced away.
+ */
+export const batchRemittances = pgTable('batch_remittances', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => collectionBatches.id, { onDelete: 'restrict' }),
+  remittanceNumber: text('remittance_number').notNull().unique(),
+  remittedOn: date('remitted_on').notNull(),
+  // Frozen at the moment of counting, so a later correction to the batch cannot rewrite what
+  // was expected to be in the drawer.
+  expectedCashCentavos: money('expected_cash_centavos'),
+  cashCentavos: money('cash_centavos'),
+  shortageCentavos: money('shortage_centavos'),
+  overageCentavos: money('overage_centavos'),
+  balanced: boolean('balanced').notNull(),
+  notes: text('notes').notNull().default(''),
+  recordedBy: uuid('recorded_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [
+  // One count per batch: a second remittance is refused rather than averaged into the first.
+  uniqueIndex('batch_remittances_batch_idx').on(t.batchId),
+  check('remittance_number', sql`${t.remittanceNumber} ~ '^RMT-[0-9]{4}-[0-9]{4}$'`),
+  check('remittance_variance', sql`${t.cashCentavos} - ${t.expectedCashCentavos} = ${t.overageCentavos} - ${t.shortageCentavos}`),
+  check('remittance_single_variance', sql`(${t.shortageCentavos} = 0 OR ${t.overageCentavos} = 0)`),
+  check('remittance_balanced', sql`${t.balanced} = (${t.shortageCentavos} = 0 AND ${t.overageCentavos} = 0)`),
+  moneyBounds(t.expectedCashCentavos), moneyBounds(t.cashCentavos), moneyBounds(t.shortageCentavos), moneyBounds(t.overageCentavos),
 ]);

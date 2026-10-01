@@ -84,7 +84,16 @@ void app.whenReady().then(() => {
   ipcMain.handle('bcis:record-payment', (event, input: unknown) => { trusted(event); return auth.recordPayment(input); });
   ipcMain.handle('bcis:verify-payment', (event, id: unknown, input: unknown) => { trusted(event); return auth.verifyPayment(id, input); });
   ipcMain.handle('bcis:void-payment', (event, id: unknown, input: unknown) => { trusted(event); return auth.voidPayment(id, input); });
-  ipcMain.handle('bcis:reverse-payment', (event, id: unknown, input: unknown) => { trusted(event); return auth.reversePayment(id, input); });
+  ipcMain.handle('bcis:reverse-payment', (event, id, input) => { trusted(event); return auth.reversePayment(id, input); });
+  ipcMain.handle('bcis:list-collection-batches', (event, query: unknown) => { trusted(event); return auth.listCollectionBatches(query); });
+  ipcMain.handle('bcis:get-collection-batch', (event, id: unknown) => { trusted(event); return auth.getCollectionBatch(id); });
+  ipcMain.handle('bcis:get-collection-route-sheet', (event, id: unknown) => { trusted(event); return auth.getCollectionRouteSheet(id); });
+  ipcMain.handle('bcis:create-collection-batch', (event, input: unknown) => { trusted(event); return auth.createCollectionBatch(input); });
+  ipcMain.handle('bcis:start-collection-batch', (event, id: unknown) => { trusted(event); return auth.startCollectionBatch(id); });
+  ipcMain.handle('bcis:submit-collection-batch', (event, id: unknown, input: unknown) => { trusted(event); return auth.submitCollectionBatch(id, input); });
+  ipcMain.handle('bcis:remit-collection-batch', (event, id: unknown, input: unknown) => { trusted(event); return auth.remitCollectionBatch(id, input); });
+  ipcMain.handle('bcis:reconcile-collection-batch', (event, id: unknown, input: unknown) => { trusted(event); return auth.reconcileCollectionBatch(id, input); });
+  ipcMain.handle('bcis:close-collection-batch', (event, id: unknown, input: unknown) => { trusted(event); return auth.closeCollectionBatch(id, input); });
   createWindow();
 });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

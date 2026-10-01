@@ -7,6 +7,7 @@ import { ApiError } from '../auth/errors';
 import type { AuthService } from '../auth/service';
 import { parse } from '../master-data/service';
 import { lock, postLedgerEntry, type Client } from '../billing/ledger';
+import { CollectionService } from '../collections/service';
 import { allocatePayment, applyToInvoice, availableCredit, refreshInvoiceStatus, spendCredit, type AllocationTouch } from './allocation';
 import { readProof, removeProof, storeProof } from './proofs';
 
@@ -21,6 +22,7 @@ const paymentSelect = `SELECT p.id,p.receipt_number AS "receiptNumber",p.method,
   p.amount_centavos AS "amountCentavos",to_char(p.received_on,'YYYY-MM-DD') AS "receivedOn",p.reference_number AS "referenceNumber",p.notes,p.reason,
   p.reversal_of_id AS "reversalOfId",o.receipt_number AS "reversalOfReceipt",p.void_reason AS "voidReason",p.voided_at AS "voidedAt",
   p.subscriber_id AS "subscriberId",s.code AS "subscriberCode",s.name AS "subscriberName",p.recorded_by AS "recordedBy",
+  p.collection_batch_id AS "collectionBatchId",cb.batch_number AS "collectionBatchNumber",
   coalesce((SELECT sum(a.amount_centavos) FROM payment_allocations a WHERE a.payment_id=p.id AND a.reversed_at IS NULL),0)::int AS "appliedCentavos",
   u.display_name AS "recordedName",v.display_name AS "verifiedName",p.verified_by AS "verifiedBy",p.verified_at AS "verifiedAt",p.created_at AS "createdAt",
   CASE WHEN pr.id IS NULL THEN NULL ELSE jsonb_build_object('id',pr.id,'originalName',pr.original_name,'storedName',pr.stored_name,
@@ -30,6 +32,7 @@ const paymentSelect = `SELECT p.id,p.receipt_number AS "receiptNumber",p.method,
   JOIN users u ON u.id=p.recorded_by
   LEFT JOIN users v ON v.id=p.verified_by
   LEFT JOIN payments o ON o.id=p.reversal_of_id
+  LEFT JOIN collection_batches cb ON cb.id=p.collection_batch_id
   LEFT JOIN payment_proofs pr ON pr.payment_id=p.id`;
 
 const allocationSelect = `SELECT a.id,a.invoice_id AS "invoiceId",i.invoice_number AS "invoiceNumber",a.amount_centavos AS "amountCentavos",
@@ -50,7 +53,9 @@ function present(row: Row): Payment {
 }
 
 export class PaymentService {
-  constructor(private auth: AuthService) {}
+  // The collection service is injected rather than built here, so a payment that is recorded
+  // onto a route sheet is checked by the same batch rules as every other collection command.
+  constructor(private auth: AuthService, private collections = new CollectionService(auth)) {}
 
   private actor(token: string, permission: Permission, client?: Client) {
     return this.auth.authorize(token, permission, client);
@@ -130,7 +135,8 @@ export class PaymentService {
    * AT-01 to AT-04: money is applied to the open invoices oldest due date first and
    * whatever is left stays as an advance credit. A cash payment posts at once, while a
    * GCash payment waits for a second person to confirm the reference, so an unverified
-   * claim can never reduce a balance.
+   * claim can never reduce a balance. A `collectionBatchId` records the money on the route
+   * sheet it was collected on, which is what the batch totals are derived from.
    */
   async record(token: string, raw: unknown): Promise<PaymentResult> {
     const input = parse(RecordPaymentInput, raw);
@@ -144,6 +150,12 @@ export class PaymentService {
       if (!subscriber) throw new ApiError(404, 'NOT_FOUND', 'Subscriber not found.');
       if (subscriber.status === 'ARCHIVED') throw conflict('An archived subscriber cannot receive a payment.');
 
+      // A collection on a route sheet is checked against the frozen route inside this same
+      // transaction, so the payment and the batch move together or not at all.
+      const batch = input.collectionBatchId
+        ? await this.collections.attach(client, token, input.collectionBatchId, input.subscriberId)
+        : null;
+
       // The file is written before the row that points at it, and removed again when the
       // transaction cannot finish, so a rejected payment leaves nothing behind.
       const file = input.proof ? await storeProof(input.proof) : null;
@@ -155,9 +167,9 @@ export class PaymentService {
       // payment with no receipt yet is exactly what the state machine allows.
       const receiptNumber = pending ? null : await this.receiptNumber(client, Number(input.receivedOn.slice(0, 4)));
       const paymentId = (await client.query(
-        `INSERT INTO payments(subscriber_id,method,direction,status,amount_centavos,received_on,reference_number,notes,recorded_by,receipt_number)
-         VALUES($1,$2,'PAYMENT',$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-        [input.subscriberId, input.method, pending ? 'PENDING' : 'POSTED', input.amountCentavos, input.receivedOn, input.referenceNumber ?? null, input.notes, actor.id, receiptNumber],
+        `INSERT INTO payments(subscriber_id,method,direction,status,amount_centavos,received_on,reference_number,notes,recorded_by,receipt_number,collection_batch_id)
+         VALUES($1,$2,'PAYMENT',$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+        [input.subscriberId, input.method, pending ? 'PENDING' : 'POSTED', input.amountCentavos, input.receivedOn, input.referenceNumber ?? null, input.notes, actor.id, receiptNumber, batch?.batchId ?? null],
       )).rows[0].id as string;
       if (file) {
         await client.query(
@@ -170,7 +182,7 @@ export class PaymentService {
       let advanceCentavos = 0;
       let touched: AllocationTouch[] = [];
       if (pending) {
-        await this.audit(client, actor.id, 'payment.record', paymentId, { method: input.method, amountCentavos: input.amountCentavos, reference: input.referenceNumber, awaitingVerification: true });
+        await this.audit(client, actor.id, 'payment.record', paymentId, { method: input.method, amountCentavos: input.amountCentavos, reference: input.referenceNumber, awaitingVerification: true, ...(batch ? { collectionBatch: batch.batchNumber } : {}) });
       } else {
         const posted = await this.post(client, { paymentId, subscriberId: input.subscriberId, amountCentavos: input.amountCentavos, method: input.method, receivedOn: input.receivedOn, actorId: actor.id, receiptNumber: receiptNumber as string });
         allocatedCentavos = posted.allocation.appliedCentavos;
@@ -179,6 +191,7 @@ export class PaymentService {
         await this.audit(client, actor.id, 'payment.record', paymentId, {
           method: input.method, amountCentavos: input.amountCentavos, receipt: receiptNumber,
           allocatedCentavos, advanceCentavos, settledCentavos: posted.settledCentavos,
+          ...(batch ? { collectionBatch: batch.batchNumber } : {}),
         });
       }
       await client.query('COMMIT');
@@ -269,12 +282,14 @@ export class PaymentService {
       }
 
       // The receipt of a reversal comes from the same gap-free sequence, so the reversal
-      // is a document of its own and the original receipt keeps its number for ever.
+      // is a document of its own and the original receipt keeps its number for ever. The
+      // reversal stays on the same route sheet, so a reversed collection stops counting
+      // against the batch that collected it.
       const receiptNumber = await this.receiptNumber(client, Number(today().slice(0, 4)));
       const reversalId = (await client.query(
-        `INSERT INTO payments(subscriber_id,method,direction,status,amount_centavos,received_on,reference_number,notes,reason,reversal_of_id,recorded_by,verified_by,verified_at,receipt_number)
-         VALUES($1,$2,'REVERSAL','POSTED',$3,$4,NULL,'',$5,$6,$7,$7,now(),$8) RETURNING id`,
-        [payment.subscriber_id, payment.method, payment.amount_centavos, today(), input.reason, id, actor.id, receiptNumber],
+        `INSERT INTO payments(subscriber_id,method,direction,status,amount_centavos,received_on,reference_number,notes,reason,reversal_of_id,recorded_by,verified_by,verified_at,receipt_number,collection_batch_id)
+         VALUES($1,$2,'REVERSAL','POSTED',$3,$4,NULL,'',$5,$6,$7,$7,now(),$8,$9) RETURNING id`,
+        [payment.subscriber_id, payment.method, payment.amount_centavos, today(), input.reason, id, actor.id, receiptNumber, payment.collection_batch_id],
       )).rows[0].id as string;
 
       const originalEntry = (await client.query(
@@ -322,11 +337,12 @@ export class PaymentService {
   private async locked(client: Client, id: string) {
     const row = (await client.query(
       `SELECT id,subscriber_id,method,direction,status,amount_centavos,to_char(received_on,'YYYY-MM-DD') AS received_on,
-         reference_number,receipt_number,recorded_by
+         reference_number,receipt_number,recorded_by,collection_batch_id
        FROM payments WHERE id=$1 FOR UPDATE`, [id],
     )).rows[0] as {
       id: string; subscriber_id: string; method: string; direction: string; status: string; amount_centavos: number;
       received_on: string; reference_number: string | null; receipt_number: string | null; recorded_by: string;
+      collection_batch_id: string | null;
     } | undefined;
     if (!row) throw new ApiError(404, 'NOT_FOUND', 'Payment not found.');
     return row;

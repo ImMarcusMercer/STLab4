@@ -10,6 +10,9 @@ let db: Awaited<ReturnType<typeof createTestDatabase>>; let api: ReturnType<type
 let proofDir: string; let receiptFile: string;
 const password = 'Synthetic-Phase5-Password-123!';
 const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
+// The reversal is stamped with the day the walkthrough runs, so the assertion follows the
+// clock instead of pinning a date that silently expires at midnight.
+const today = new Date().toISOString().slice(0, 10);
 
 // The smallest valid PNG. The API checks the magic bytes, so a real image is required.
 const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -144,7 +147,7 @@ test('cash settles the oldest due invoice first, holds an overpayment and is rev
     await page.getByRole('button', { name: 'View RCT-2026-1002', exact: true }).click();
     const reversed = page.getByRole('dialog');
     await expect(reversed.getByText('Reason: Collector entered the wrong subscriber')).toBeVisible();
-    await expect(reversed.getByText('2026-09-30').first()).toBeVisible();
+    await expect(reversed.getByText(today).first()).toBeVisible();
   } finally { await desktop.close(); }
 });
 

@@ -9,6 +9,10 @@ import type {
   PaymentDetail, PaymentList, PaymentProofContent, PaymentQueryInput, Payment, PaymentResult, RecordPaymentInput,
   ReversePaymentInput, SubscriberAccount, VerifyPaymentInput, VoidPaymentInput,
 } from './payments';
+import type {
+  BatchDetail, BatchList, BatchQueryInput, CloseBatchInput, CreateBatchInput, ReconcileBatchInput, RemittanceInput,
+  RouteSheet, SubmitBatchInput,
+} from './collections';
 
 const common = { service: z.literal('bcis-api'), version: z.string().min(1) };
 export const SystemStatusSchema = z.discriminatedUnion('status', [
@@ -64,4 +68,16 @@ export interface DesktopBridge {
   verifyPayment(id: string, input: VerifyPaymentInput): Promise<ApiResult<PaymentResult>>;
   voidPayment(id: string, input: VoidPaymentInput): Promise<ApiResult<Payment>>;
   reversePayment(id: string, input: ReversePaymentInput): Promise<ApiResult<PaymentResult>>;
+  // -------------------------------------------------------------- collections
+  // Every collection command answers with the stored batch, so the screen redraws from server
+  // truth instead of guessing what a button did to the figures.
+  listCollectionBatches(query: BatchQueryInput): Promise<ApiResult<BatchList>>;
+  getCollectionBatch(id: string): Promise<ApiResult<BatchDetail>>;
+  getCollectionRouteSheet(id: string): Promise<ApiResult<RouteSheet>>;
+  createCollectionBatch(input: CreateBatchInput): Promise<ApiResult<BatchDetail>>;
+  startCollectionBatch(id: string): Promise<ApiResult<BatchDetail>>;
+  submitCollectionBatch(id: string, input: SubmitBatchInput): Promise<ApiResult<BatchDetail>>;
+  remitCollectionBatch(id: string, input: RemittanceInput): Promise<ApiResult<BatchDetail>>;
+  reconcileCollectionBatch(id: string, input: ReconcileBatchInput): Promise<ApiResult<BatchDetail>>;
+  closeCollectionBatch(id: string, input: CloseBatchInput): Promise<ApiResult<BatchDetail>>;
 }

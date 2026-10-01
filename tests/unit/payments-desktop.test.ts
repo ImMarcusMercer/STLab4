@@ -11,7 +11,8 @@ const payment: Payment = {
   id: '22222222-2222-4222-8222-222222222222', receiptNumber: 'RCT-2026-1001', method: 'CASH', status: 'POSTED', direction: 'PAYMENT',
   amountCentavos: 199900, receivedOn: '2026-09-30', referenceNumber: null, notes: '', reason: '',
   subscriberId, subscriberCode: 'SUB-001', subscriberName: 'Payment Sample', appliedCentavos: 199900, advanceCentavos: 0,
-  reversalOfId: null, reversalOfReceipt: null, recordedBy: actor.id, recordedName: 'Cashier',
+  reversalOfId: null, reversalOfReceipt: null, collectionBatchId: null, collectionBatchNumber: null,
+  recordedBy: actor.id, recordedName: 'Cashier',
   verifiedBy: null, verifiedName: null, verifiedAt: null, voidedAt: null, voidReason: '', proof: null, createdAt: '2026-09-30T00:00:00.000Z',
 };
 const result: PaymentResult = {

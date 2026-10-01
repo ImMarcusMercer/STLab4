@@ -4,10 +4,11 @@ import type { Actor } from '../../../shared/auth';
 import { decimalMoney, parseCentavos } from '../../../shared/billing';
 import type { MasterList, MasterRecord } from '../../../shared/master-data';
 import {
-  paymentMethodValues, paymentStatusValues, proofByteLimit, proofMimeValues, type PaymentList, type PaymentMethod,
+  paymentMethodValues, paymentStatusValues, proofMimeValues, type PaymentList, type PaymentMethod,
   type PaymentStatus, type SubscriberAccount,
 } from '../../../shared/payments';
 import { PaymentDialogs, type PaymentDialogState } from './PaymentDialogs';
+import { readProofFile } from './proof-file';
 
 const money = (centavos: number) => `PHP ${decimalMoney(centavos)}`;
 const statusTone = (status: PaymentStatus) => status === 'POSTED' ? 'good' : status === 'PENDING' ? 'warn' : 'neutral';
@@ -178,17 +179,9 @@ function CollectTab({ revision, canCreate, onUnauthorized, onChanged }: { revisi
 
   async function attach(file: File | null) {
     if (!file) { clearProof(); return; }
-    if (file.size > proofByteLimit) { setError('The receipt is larger than 5 MB. Attach a smaller image or PDF.'); return; }
-    const mimeType = file.type === 'image/png' || file.type === 'image/jpeg' || file.type === 'application/pdf' ? file.type : null;
-    if (!mimeType) { setError('Only a PNG, JPEG or PDF receipt can be attached.'); return; }
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('The file could not be read.'));
-      reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
-      reader.readAsDataURL(file);
-    }).catch(() => '');
-    if (!base64) { setError('The receipt could not be read from disk.'); return; }
-    setError(''); setProof({ fileName: file.name, mimeType, byteSize: file.size, base64 });
+    const result = await readProofFile(file);
+    if (!result.ok) { setError(result.message); return; }
+    setError(''); setProof(result.proof);
   }
 }
 

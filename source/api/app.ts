@@ -6,6 +6,7 @@ import { ApiError } from './auth/errors';
 import { masterRoutes } from './master-data/routes';
 import { billingRoutes } from './billing/routes';
 import { paymentRoutes } from './payments/routes';
+import { collectionRoutes } from './collections/routes';
 
 export function buildApp(options: { checkDatabase: () => Promise<void>; logLevel?: string; auth?: AuthService }) {
   const app = Fastify({
@@ -49,5 +50,6 @@ export function buildApp(options: { checkDatabase: () => Promise<void>; logLevel
   if (options.auth) app.register(async (scope) => masterRoutes(scope, options.auth!));
   if (options.auth) app.register(async (scope) => billingRoutes(scope, options.auth!));
   if (options.auth) app.register(async (scope) => paymentRoutes(scope, options.auth!));
+  if (options.auth) app.register(async (scope) => collectionRoutes(scope, options.auth!));
   return app;
 }

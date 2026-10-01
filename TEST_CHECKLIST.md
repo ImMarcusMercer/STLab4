@@ -135,6 +135,38 @@ one is issued first. Generate a period so both invoices exist.
 - [ ] **PAY-19 — Proof path safety:** Confirm the stored attachment is written under a generated name, and that the recorded SHA-256 matches the file. **Expected:** The original file name is display-only, and the digest recorded with the payment matches the bytes on disk.
 - [ ] **PAY-20 — Permissions:** Repeat a recording, a confirmation and a reversal as Cashier and as Auditor. **Expected:** Cashier can record, view and confirm but sees no reverse control and is refused by the API; Auditor can read and reverse but cannot record.
 
+## 10b. Collections, remittance and route sheets
+
+These checks have not been walked through by a human. Phase 6 is covered by automated
+tests instead: 12 collection contract unit tests, 26 real-PostgreSQL collection
+integration tests (AT-07 to AT-09) and 2 Electron walkthroughs. Run them before ticking
+anything here.
+
+Prepare the Phase 6 fixture: an area with two accounts that have an open balance, a
+second area with nothing owing, and one collector. Generate a period so both accounts
+have an issued invoice.
+
+- [ ] **COL-01 — Areas and collectors:** On **Collections → Areas & collectors**, create an area and a collector. **Expected:** Both save with generated codes, appear in the table, and are selectable when a route is opened.
+- [ ] **COL-02 — Empty area is refused:** Open a route for the area with nothing owing. **Expected:** It is refused with a message that no active account has an open balance, and no route is created.
+- [ ] **COL-03 — Open a route:** Open a route for the collector and the populated area. **Expected:** The batch number is issued, the route lists both accounts with the frozen amounts due, and the newest open invoice is the current bill while older open invoices appear as arrears (AT-09).
+- [ ] **COL-04 — One route per day:** Try to open a second route for the same collector, area and date. **Expected:** It is refused.
+- [ ] **COL-05 — Out-of-area account is refused:** Open a route naming an account from another area. **Expected:** It is refused.
+- [ ] **COL-06 — Route bound:** Confirm a route cannot exceed 500 accounts. **Expected:** An area beyond the bound is refused with the limit stated.
+- [ ] **COL-07 — Cash collection:** Collect a cash payment on one route account. **Expected:** A receipt is issued carrying the batch number, the account moves toward `COLLECTED`, and the route moves to in progress on its own.
+- [ ] **COL-08 — Partial and unpaid accounts:** Collect part of one balance and nothing from another. **Expected:** The account statuses read `PARTIAL` and `PENDING`, and the uncollected figure matches the route total.
+- [ ] **COL-09 — Pending GCash is not money:** Record a GCash claim on the route. **Expected:** It appears as a pending figure, not as collected money, and the route cannot be submitted while it is outstanding.
+- [ ] **COL-10 — Submit freezes the sheet:** Submit the route. **Expected:** The confirmation states no further collections are accepted, and the collect control disappears.
+- [ ] **COL-11 — Exact remittance (AT-07):** Count cash equal to the expected cash. **Expected:** The route is balanced with no shortage or overage.
+- [ ] **COL-12 — Shortage (AT-08):** Count less cash than expected. **Expected:** A shortage equal to the difference is stored and shown; the route is not silently balanced.
+- [ ] **COL-13 — Overage (AT-08):** Count more cash than expected. **Expected:** An overage equal to the difference is stored and shown, and only one of shortage or overage is ever set.
+- [ ] **COL-14 — Nil remittance:** Count zero cash on a route with no collections. **Expected:** It is accepted as a legitimate nil remittance.
+- [ ] **COL-15 — No self-signature:** As the person who counted the cash, try to reconcile. **Expected:** The reconciliation is refused and the reason is shown.
+- [ ] **COL-16 — Second-person reconciliation:** Sign in as another authorised user, reconcile with a written reason. **Expected:** The remittance is signed, and the shortage is still on the record with the explanation.
+- [ ] **COL-17 — Reconciliation reason is required:** Try to reconcile with a blank reason. **Expected:** It is refused.
+- [ ] **COL-18 — Close:** Close a reconciled route. **Expected:** The route is kept as history and its sheet, remittance and collections remain readable.
+- [ ] **COL-19 — Route sheet:** Print the route sheet. **Expected:** The printed document shows the batch number, area, collector, every account line and the day's totals, and the workspace navigation is not printed.
+- [ ] **COL-20 — Permissions:** Repeat opening, collecting, remitting and reconciling as Cashier, Auditor and Supervisor. **Expected:** Cashier and Auditor never see the module; Supervisor manages routes but is offered no payment form, because a collection needs both permissions.
+
 ## 11. Automated and technical verification
 
 Close the development desktop/server before E2E testing so the configured ports are available. Keep PostgreSQL running. Run each command separately; record its exit code and summary. Existing integration/E2E helpers use uniquely named disposable test databases, not development-table truncation.
@@ -142,20 +174,22 @@ Close the development desktop/server before E2E testing so the configured ports 
 | Check | Command | Expected result / previous baseline |
 |---|---|---|
 | AUTO-01 | `npm.cmd run check` | Exit 0; strict TypeScript, ESLint and unit tests pass. Previous baseline: 64 tests. |
-| AUTO-02 | `npm.cmd run test:integration` | Exit 0; real PostgreSQL auth/RBAC, master-data, billing and payment tests pass. Previous baseline: 50 tests. |
+| AUTO-02 | `npm.cmd run test:integration` | Exit 0; real PostgreSQL auth/RBAC, master-data, billing, payment and collection tests pass. Previous baseline: 50 tests. |
 | AUTO-03 | `npm.cmd run build` | Exit 0; main, preload and renderer bundles generated. Run before E2E. |
-| AUTO-04 | `npm.cmd run test:e2e` | Exit 0; Electron workflows pass, including the two billing and two payment walkthroughs. Previous baseline: 13 tests. |
+| AUTO-04 | `npm.cmd run test:e2e` | Exit 0; Electron workflows pass, including the two billing, two payment and two collection walkthroughs. Previous baseline: 13 tests. |
 | AUTO-05 | `npm.cmd run test:db` | Connection, migration, repeat migration and readiness pass. |
 | AUTO-06 | `npm.cmd run db:generate` | “No schema changes.” If a migration is generated unexpectedly, record/review the drift; do not treat it as a pass. |
 | AUTO-07 | `npm.cmd audit` | Review current results. Previous baseline: zero vulnerabilities; this result may change over time. |
 
-- [ ] **AUTO-01** completed; attach output.
-- [ ] **AUTO-02** completed; attach output.
-- [ ] **AUTO-03** completed; attach output.
-- [ ] **AUTO-04** completed; attach output.
-- [ ] **AUTO-05** completed; attach output.
-- [ ] **AUTO-06** completed; attach output.
-- [ ] **AUTO-07** completed; attach output.
+Executed 2026-09-30 after the Phase 6 changes, each on its own:
+
+- [x] **AUTO-01** — exit 0; strict typecheck and lint clean; `Test Files 13 passed`, `Tests 76 passed` in 13 files.
+- [x] **AUTO-02** — exit 0; `Test Files 5 passed (5)`, `Tests 76 passed (76)`, of which 26 are the collection suite in `tests/integration/collections.test.ts`.
+- [x] **AUTO-03** — exit 0; main, preload and renderer bundles written to `out/`.
+- [x] **AUTO-04** — exit 0; `15 passed`, including both new collection walkthroughs. Note that E2E runs the built app in `out/`, so a renderer change needs AUTO-03 first.
+- [x] **AUTO-05** — `PASS: PostgreSQL connection, migration, repeat migration preserves data, API readiness.`
+- [x] **AUTO-06** — `No schema changes, nothing to migrate` for migrations 0000–0013.
+- [x] **AUTO-07** — `found 0 vulnerabilities`.
 - [ ] **SEC-01 — Desktop boundary:** Review passing Electron boundary assertions. **Expected:** `contextIsolation=true`, `sandbox=true`, `nodeIntegration=false`, no renderer `require`, and only the named preload operations.
 - [ ] **SEC-02 — Session secrets:** Review passing authentication unit/integration/E2E assertions. **Expected:** Renderer login responses/storage contain no bearer token or password hash; database session storage uses token digests; lock/logout/role/password changes revoke applicable access.
 - [ ] **SEC-03 — Server validation:** Review integration failures for invalid money, dates, duplicate codes, missing/inactive references and unauthorized assignments. **Expected:** Requests fail safely; successful records/history are unchanged.
@@ -171,9 +205,10 @@ Historical totals are a comparison point, not a fixed requirement for future cod
 
 | Check ID(s) | Result | Actual result / evidence path | Defect / follow-up |
 |---|---|---|---|
-| | | | |
-| | | | |
-| | | | |
+| AUTO-01 to AUTO-07 | Pass 2026-09-30 | Unit 76/76, integration 76/76, build exit 0, e2e 15/15, database check PASS, schema in sync, 0 vulnerabilities | `docs/TEST_EVIDENCE.md`, Phase 6 section |
+| SEC-01 | Pass | `tests/e2e/desktop.spec.ts` asserts sandbox, context isolation, no renderer `require`, and the exact preload surface, which now includes the nine collection operations | Boundary list updated when the collection bridge was added |
+| COL-01 to COL-20 | Not run | Phase 6 is covered by automated tests; the manual walkthrough above has not been performed by a human | Run and record before defence |
+| PAY-01 to PAY-20, and the other `[NOT RECOVERED]` sections | Not run | Reconstructed from the specification; never executed as written | — |
 
 Defect template:
 
@@ -191,4 +226,14 @@ Retest result:
 
 ## Outside this checklist
 
-Do not mark these as passed based on Phases 1–5: collection routes, printed route sheets or batch lifecycle; remittances, shortage/overage and authorised reconciliation; receivables, aging and follow-up filters; suspension/reconnection approvals; financial reports, exports and subscriber statements; backup and restore of the proof directory; installer delivery; production LAN hardening; 20,000-subscriber load tests; physical three-PC financial posting. These remain Phases 6–10. Current permission tests cover implemented operations only and do not complete every part of the laboratory's AT-10.
+Do not mark these as passed based on Phases 1–6: receivables, aging and follow-up filters;
+suspension/reconnection approvals; financial reports, exports and subscriber statements;
+backup and restore of the proof directory; installer delivery; production LAN hardening;
+20,000-subscriber load tests; physical three-PC financial posting. These remain Phases
+7–10. Current permission tests cover implemented operations only and do not complete
+every part of the laboratory's AT-10.
+
+Collection routes, printed route sheets, batch lifecycle, remittances, shortage/overage
+and authorised reconciliation are implemented in Phase 6 and are covered by the
+automated checks above, but the manual COL-01 to COL-20 walkthrough in section 10b has
+not been performed by a human, so it stays unticked.

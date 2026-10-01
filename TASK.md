@@ -3,7 +3,7 @@
 **Goal:** Implement the laboratory in this directory while preserving `../student-information-api`.
 **Architecture:** Electron/React desktop clients communicate with a Fastify API; PostgreSQL is accessed only by the server.
 **Spec:** [Foundation design](docs/FOUNDATION.md); the BCIS laboratory PDF in the parent directory.
-**Execution:** Implement tasks sequentially and mark done only after verification. Phases 1 through 4 are complete; subsequent phases remain pending.
+**Execution:** Implement tasks sequentially and mark done only after verification. Phases 1 through 6 are complete; subsequent phases remain pending.
 
 **Verification:** Use [TEST_CHECKLIST.md](TEST_CHECKLIST.md) for manual steps, expected results, automated commands and a results log covering completed features.
 
@@ -61,8 +61,14 @@ Verified 2026-09-30: 64 unit tests, 50 PostgreSQL integration tests (14 for paym
 
 ## Phase 6 — Collections and remittance
 
-- [ ] Implement routes, printable sheets and collection batch lifecycle.
-- [ ] Record remittances, shortage/overage and authorized reconciliation; test AT-07–AT-08.
+Design and execution details: [collection design](docs/PHASE6.md).
+
+- [x] Implement routes, printable sheets and collection batch lifecycle.
+- [x] Record remittances, shortage/overage and authorized reconciliation; test AT-07–AT-08.
+
+Verified 2026-09-30: 76 unit tests (12 for the collection contracts), 76 PostgreSQL integration tests (26 for collections) and 15 Electron tests (2 collection walkthroughs) passed. Includes a route that freezes the account list, the latest open invoice as the current bill and the older open invoice as arrears (AT-09); refusal of an area with nothing owing, an out-of-area subscriber list, a duplicate route for the same day and a route over 500 accounts; cash, partial and pending-GCash collections counted from posted payments only; an exact remittance (AT-07), a shortage and an overage (AT-08) that is stored rather than adjusted away; reconciliation refused for the person who counted the cash and accepted by a second user with a written reason; the shortage still on the record after the signature; closing; a printable route sheet that is a read-only projection of the stored route; and database guards refusing a direct status change, a frozen-account edit, a remittance edit and a payment re-point. Typecheck, lint, build, database checks, migration consistency and npm audit passed. See [Phase 6 design](docs/PHASE6.md) and [test evidence](docs/TEST_EVIDENCE.md).
+
+Limits: the evidence uses two accounts in one area, one collector and one machine; concurrent posting from three office clients, a 20,000-subscriber load target, production LAN security and the Windows installer remain Phase 9 work.
 
 ## Phase 7 — Receivables and service control
 

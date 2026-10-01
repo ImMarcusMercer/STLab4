@@ -19,6 +19,8 @@ test('owner maintains plans, subscribers and multiple services with visible hist
   try {
     const page = await desktop.firstWindow(); await signIn(page, 'owner');
     await page.getByRole('button', { name: 'Collections', exact: true }).click();
+    // Areas and collectors are set up from the Collections module, behind the setup tab.
+    await page.getByRole('tab', { name: 'Areas & collectors' }).click();
     await page.getByRole('button', { name: 'New area', exact: true }).click();
     await page.getByRole('dialog').getByLabel('Code', { exact: true }).fill('CENTRAL');
     await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Central route');

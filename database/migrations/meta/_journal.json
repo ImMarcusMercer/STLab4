@@ -92,6 +92,13 @@
       "when": 1790698700000,
       "tag": "0012_payment_history_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790764075175,
+      "tag": "0013_collection_batches",
+      "breakpoints": true
     }
   ]
 }

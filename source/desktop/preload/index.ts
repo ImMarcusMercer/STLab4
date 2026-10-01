@@ -44,5 +44,14 @@ const bridge: DesktopBridge = {
   verifyPayment: (id, input) => ipcRenderer.invoke('bcis:verify-payment', id, input),
   voidPayment: (id, input) => ipcRenderer.invoke('bcis:void-payment', id, input),
   reversePayment: (id, input) => ipcRenderer.invoke('bcis:reverse-payment', id, input),
+  listCollectionBatches: (query) => ipcRenderer.invoke('bcis:list-collection-batches', query),
+  getCollectionBatch: (id) => ipcRenderer.invoke('bcis:get-collection-batch', id),
+  getCollectionRouteSheet: (id) => ipcRenderer.invoke('bcis:get-collection-route-sheet', id),
+  createCollectionBatch: (input) => ipcRenderer.invoke('bcis:create-collection-batch', input),
+  startCollectionBatch: (id) => ipcRenderer.invoke('bcis:start-collection-batch', id),
+  submitCollectionBatch: (id, input) => ipcRenderer.invoke('bcis:submit-collection-batch', id, input),
+  remitCollectionBatch: (id, input) => ipcRenderer.invoke('bcis:remit-collection-batch', id, input),
+  reconcileCollectionBatch: (id, input) => ipcRenderer.invoke('bcis:reconcile-collection-batch', id, input),
+  closeCollectionBatch: (id, input) => ipcRenderer.invoke('bcis:close-collection-batch', id, input),
 };
 contextBridge.exposeInMainWorld('bcis', bridge);

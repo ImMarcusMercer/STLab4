@@ -269,3 +269,59 @@ td strong { font-size: 12px; font-weight: 550; color: #263d5d; }
 @media (max-width: 1100px) {
   .billing-command-fields, .invoice-summary, .account-summary { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* -------------------------------------------------------------- collections */
+.collections-page { display: grid; gap: 18px; }
+.collection-heading h2 { margin: 0; }
+.collection-heading p { margin: 4px 0 0; }
+.collection-figures { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.collection-figures small { display: block; }
+.billing-command select, .billing-command textarea { width: 100%; border: 1px solid #d2dce9; border-radius: 6px; padding: 10px 12px; color: #172b48; font: inherit; outline: none; background: white; }
+.billing-command select:focus, .billing-command textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #2563eb15; }
+.billing-command textarea { min-height: 76px; resize: vertical; }
+.billing-command input[readonly] { background: #f1f5f9; color: #64748b; }
+.collection-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 18px; }
+.collection-actions .primary-button { display: inline-flex; }
+.collection-actions p { margin: 0; }
+.collection-inline { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.collection-inline label { display: grid; gap: 6px; font-size: 12px; color: #334155; font-weight: 550; }
+.collection-inline input { border: 1px solid #d2dce9; border-radius: 6px; padding: 10px 12px; color: #172b48; font: inherit; outline: none; background: white; }
+.collection-remittance { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px; padding: 14px 16px; border: 1px solid #dbe4ef; border-radius: 7px; background: #f8fafc; }
+.collection-remittance svg { flex-shrink: 0; margin-top: 2px; }
+.collection-remittance p { margin: 6px 0 0; font-size: 11px; color: #475569; line-height: 1.7; }
+.collection-remittance.balanced { border-color: #c9e7d3; background: #f1faf4; }
+.collection-remittance.balanced svg { color: #1d7a4c; }
+.collection-remittance.unbalanced { border-color: #f3ddb4; background: #fffaf0; }
+.collection-remittance.unbalanced svg { color: #b45309; }
+.collection-variance { color: #92600e !important; font-weight: 550; }
+.collection-accounts { margin-top: 18px; }
+.collection-sheet-card { margin-top: 20px; padding: 16px; border: 1px dashed #c3d0e0; border-radius: 7px; background: #fbfdff; }
+.collection-sheet-card .panel-top { margin-bottom: 14px; }
+.collection-sheet-card h3 { margin: 0; }
+.route-sheet-print { font-variant-numeric: tabular-nums; }
+.route-sheet-print header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 2px solid #27384e; }
+.route-sheet-print header h2 { margin: 2px 0 0; font-size: 18px; }
+.route-sheet-print header p { margin: 0; }
+.route-sheet-print dl { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 22px; margin: 0; }
+.route-sheet-print dl div { display: flex; gap: 8px; }
+.route-sheet-print dt { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: #7b8ca1; }
+.route-sheet-print dd { margin: 0; font-size: 12px; font-weight: 600; color: #27384e; }
+.route-sheet-print table { width: 100%; margin-top: 14px; }
+.route-sheet-print tfoot td { border-top: 2px solid #dfe6ef; font-weight: 600; }
+.route-sheet-print footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #dbe4ef; color: #475569; font-size: 11px; }
+.route-sheet-print footer span { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 1100px) { .collection-figures { grid-template-columns: minmax(0, 1fr); } }
+
+/* The sheet is the only thing on the paper: the workspace is hidden so a printed route is clean. */
+@media print {
+  body { background: #fff; }
+  .sidebar, .topbar, .module-tabs, .page-heading, .master-toolbar, .info-note, .page-footer,
+  .connection-card, .roadmap-grid, .section-heading, .pager, .form-alert, .success-notice,
+  .collection-actions, .collection-collect, .collection-remit, .collection-reconcile,
+  .collection-remittance, .collection-figures, .collection-accounts, .collection-sheet-card .panel-top { display: none !important; }
+  .app-shell, .page-content, .collections-page, .collection-detail, .collection-sheet-card { display: block; max-width: none; margin: 0; padding: 0; border: 0; background: #fff; }
+  .collection-sheet-card { border: 0; }
+  .route-sheet-print { display: block !important; }
+  .route-sheet-print thead { display: table-header-group; }
+  .route-sheet-print tr { break-inside: avoid; }
+}

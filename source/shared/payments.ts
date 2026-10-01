@@ -43,6 +43,8 @@ export const PaymentSchema = z.object({
   amountCentavos: amount, direction: z.enum(['PAYMENT', 'REVERSAL']), receivedOn: IsoDate, referenceNumber: z.string().nullable(),
   notes: z.string(), reason: z.string(), subscriberId: z.uuid(), subscriberCode: z.string(), subscriberName: z.string(),
   appliedCentavos: money, advanceCentavos: money, reversalOfId: z.uuid().nullable(), reversalOfReceipt: z.string().nullable(),
+  // The route sheet this money was collected on, so a receipt proves which batch it belongs to.
+  collectionBatchId: z.uuid().nullable(), collectionBatchNumber: z.string().nullable(),
   recordedBy: z.string(), recordedName: z.string(), verifiedBy: z.uuid().nullable(), verifiedName: z.string().nullable(), verifiedAt: z.string().nullable(),
   voidedAt: z.string().nullable(), voidReason: z.string(), proof: PaymentProofSchema.nullable(), createdAt: z.string(),
 });
@@ -77,6 +79,9 @@ export type SubscriberAccount = z.infer<typeof SubscriberAccountSchema>;
 export const RecordPaymentInput = z.object({
   subscriberId: z.uuid(), method: PaymentMethod, amountCentavos: amount, receivedOn: IsoDate,
   referenceNumber: reference.optional(), notes: z.string().trim().max(500).default(''),
+  // The route sheet the money was collected on. The API checks that the account is on that
+  // sheet, that the route still accepts collections, and that the operator may manage them.
+  collectionBatchId: z.uuid().optional(),
   // A GCash payment is only posted after someone other than the collector confirms the
   // reference, so the proof is mandatory with the command that records it.
   proof: z.object({ fileName: displayName, mimeType: z.enum(proofMimeValues), base64: z.string().min(8).max(7_200_000) }).optional(),

@@ -12,6 +12,11 @@ import {
   RecordPaymentInput, ReversePaymentInput, SubscriberAccountSchema, VerifyPaymentInput, VoidPaymentInput,
   type Payment, type PaymentDetail, type PaymentList, type PaymentProofContent, type PaymentResult, type SubscriberAccount,
 } from '../../shared/payments';
+import {
+  BatchDetailSchema, BatchListSchema, BatchQuery, CloseBatchInput, CreateBatchInput, ReconcileBatchInput, RemittanceInput,
+  RouteSheetSchema, SubmitBatchInput,
+  type BatchDetail, type BatchList, type RouteSheet,
+} from '../../shared/collections';
 
 const LoginResponse = z.object({ token: z.string().regex(/^[a-f0-9]{64}$/), user: ActorSchema });
 const ErrorResponse = z.object({ error: z.object({ message: z.string(), fields: z.record(z.string(), z.array(z.string())).optional() }) });
@@ -245,5 +250,62 @@ export class AuthClient {
     const parsed = ReversePaymentInput.safeParse(input);
     if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Provide a reason for reversing this receipt.' } };
     return this.request(`/payments/${key.data}/reverse`, PaymentResultSchema, 'POST', parsed.data);
+  }
+
+  // ------------------------------------------------------------------- collections
+  // A collection command is forwarded exactly as the operator gave it. The desktop never
+  // counts a route, never compares a remittance and never decides a batch state: the API
+  // freezes the sheet, derives the totals and answers with the stored batch.
+
+  async listCollectionBatches(input: unknown): Promise<ApiResult<BatchList>> {
+    const parsed = BatchQuery.safeParse(input);
+    if (!parsed.success) return { ok: false, error: { status: 422, message: 'Invalid collection filters.' } };
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(parsed.data)) if (value !== undefined && value !== '') params.set(key, String(value));
+    return this.request(`/collections/batches?${params}`, BatchListSchema);
+  }
+  async getCollectionBatch(id: unknown): Promise<ApiResult<BatchDetail>> {
+    const key = z.uuid().safeParse(id);
+    if (!key.success) return { ok: false, error: { status: 422, message: 'Invalid collection batch.' } };
+    return this.request(`/collections/batches/${key.data}`, BatchDetailSchema);
+  }
+  async getCollectionRouteSheet(id: unknown): Promise<ApiResult<RouteSheet>> {
+    const key = z.uuid().safeParse(id);
+    if (!key.success) return { ok: false, error: { status: 422, message: 'Invalid collection batch.' } };
+    return this.request(`/collections/batches/${key.data}/route-sheet`, RouteSheetSchema);
+  }
+  async createCollectionBatch(input: unknown): Promise<ApiResult<BatchDetail>> {
+    const parsed = CreateBatchInput.safeParse(input);
+    if (!parsed.success) return { ok: false, error: { status: 422, message: 'Check the route details.', fields: z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request('/collections/batches', BatchDetailSchema, 'POST', parsed.data);
+  }
+  async startCollectionBatch(id: unknown): Promise<ApiResult<BatchDetail>> {
+    const key = z.uuid().safeParse(id);
+    if (!key.success) return { ok: false, error: { status: 422, message: 'Invalid collection batch.' } };
+    return this.request(`/collections/batches/${key.data}/start`, BatchDetailSchema, 'POST', {});
+  }
+  async submitCollectionBatch(id: unknown, input: unknown): Promise<ApiResult<BatchDetail>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = SubmitBatchInput.safeParse(input ?? {});
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Check the submission details.' } };
+    return this.request(`/collections/batches/${key.data}/submit`, BatchDetailSchema, 'POST', parsed.data);
+  }
+  async remitCollectionBatch(id: unknown, input: unknown): Promise<ApiResult<BatchDetail>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = RemittanceInput.safeParse(input);
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Check the counted cash and its date.', fields: parsed.success ? {} : z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request(`/collections/batches/${key.data}/remittance`, BatchDetailSchema, 'POST', parsed.data);
+  }
+  async reconcileCollectionBatch(id: unknown, input: unknown): Promise<ApiResult<BatchDetail>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = ReconcileBatchInput.safeParse(input);
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Provide a written reason for reconciling this remittance.' } };
+    return this.request(`/collections/batches/${key.data}/reconcile`, BatchDetailSchema, 'POST', parsed.data);
+  }
+  async closeCollectionBatch(id: unknown, input: unknown): Promise<ApiResult<BatchDetail>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = CloseBatchInput.safeParse(input ?? {});
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Invalid close request.' } };
+    return this.request(`/collections/batches/${key.data}/close`, BatchDetailSchema, 'POST', parsed.data);
   }
 }

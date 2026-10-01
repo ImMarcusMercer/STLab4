@@ -260,3 +260,93 @@ work, as do backup/restore of the proof directory, the 20,000-subscriber load ta
 production LAN security and the Windows installer. The GCash evidence confirms the
 two-person rule with one owner and one cashier on one machine; it does not claim a
 reviewed-against-the-banking-app workflow.
+
+
+## Phase 6 verification - 2026-09-30
+
+Collection routes, the batch lifecycle, remittance with shortage/overage, authorised
+reconciliation and the printable route sheet are implemented behind the API and on the
+desktop screens. All test data is synthetic and lives in uniquely named disposable
+databases, separate from the development database.
+
+| Command | Observed result |
+|---|---|
+| `npm.cmd run check` | Strict typecheck and lint passed; 76 unit tests in 13 files, of which 12 are the new collection contract tests |
+| `npm.cmd run test:integration` | 76 PostgreSQL tests in 5 files, of which 26 are the new Phase 6 collection suite (AT-07 to AT-09) |
+| `npm.cmd run build` | Desktop main, sandboxed preload and renderer production bundles generated; only the upstream Zod comment-annotation warnings |
+| `npm.cmd run test:db` | `PASS: PostgreSQL connection, migration, repeat migration preserves data, API readiness.` |
+| `npm.cmd run db:generate` | `No schema changes, nothing to migrate` - the checked-in schema matches migrations 0000-0013 |
+| `npm.cmd run test:e2e` | 15 Electron tests passed, of which 2 are the new Phase 6 collection walkthroughs |
+| `npm.cmd audit` | `found 0 vulnerabilities` |
+
+The 26 collection integration tests cover, against real PostgreSQL: authorization for
+anonymous, cashier, auditor and supervisor requests; opening a route that freezes the
+account list with the latest open invoice as the current bill and the older open invoice
+as arrears (AT-09); refusing an area with nothing owing; refusing an explicit subscriber
+list that does not belong to the chosen area; refusing a duplicate route for the same
+collector, area and date; refusing a route over the 500-account limit; narrowing a route
+to a chosen account list; the automatic `OPEN` to `IN_PROGRESS` move on first collection;
+cash collection, a partial collection, and a GCash claim that stays pending; the
+collected, uncollected and pending figures agreeing between the list and the detail
+read; a remittance that is exactly balanced (AT-07); a shortage (AT-08) and an overage
+(AT-08); a nil remittance; reconciliation refused for the person who counted the cash;
+reconciliation accepted by a second user; closing a balanced route; a route closed on a
+shortage that still carries its variance; the route sheet; list filtering; and direct-SQL
+attempts to change a batch status, edit a frozen account, edit a remittance and re-point
+a recorded payment, all refused by the database guards.
+
+The 12 collection unit tests cover the arithmetic and the contracts without a database:
+per-year batch and remittance numbering, exactly one forward lifecycle step with nothing
+backwards, collections refused once a route is handed in, `reconcileCash` matching
+(AT-07), shortage and overage in both directions with never both set at once and negative
+or fractional amounts refused (AT-08), the five account statuses, route summary sums with
+pending claims held apart from collected money, the route sheet being a projection of the
+detail, the 500-account bound, a required written reconciliation reason, and the detail
+contract refusing a document missing a figure the printed sheet is built from.
+
+The two Electron walkthroughs exercise the real screens against the real API. The full
+route walkthrough refuses an empty area, opens a route for two accounts totalling
+PHP 1000.00, refuses a duplicate route for the same day, collects PHP 500.00 in cash from
+one account and observes the status move to in progress on its own, submits the route and
+observes the collect form disappear, counts PHP 450.00 against the expected PHP 500.00 and
+observes a stored shortage of PHP 50.00, is refused when the same user tries to reconcile
+it, signs out and returns as a supervisor, reconciles with a written reason, and observes
+that the shortage is still on the record afterwards. It then closes the route and opens
+the printable sheet, which shows the stored batch number, area, collector, both account
+lines and the day's totals. The second walkthrough proves a supervisor reaches the
+collections screen and can open a route but is not offered a payment form.
+
+Defect record, each found by a failing assertion and fixed before re-running:
+
+| Symptom | Cause | Correction | Evidence |
+|---|---|---|---|
+| The route list and detail reported a shortage of PHP 0 | `remittanceColumns` aliased `shortage_centavos`, but the remittance CTE had already aliased them, and the projection used the wrong case | Project `rm.shortage_centavos`, `rm.overage_centavos` and `rm.balanced` | Shortage and overage integration cases pass |
+| The route detail 500-ed on a recorded remittance | The remittance JSON subquery selected from `batch_remittances`, which is not in scope where `recordedName` is resolved | Select from the `remittance` CTE | Remittance and reconciliation cases pass |
+| A snapshot with a manual arrears invoice showed arrears of PHP 0 | The fixture left the manual invoice as a draft, so it was not an open invoice | Finalise the manual invoice in the fixture | Opening-snapshot case shows the arrears |
+| Reconciling a route as its own counter was expected to be a conflict | The service returns `403`, because this is a permission-style refusal rather than a state conflict | Assert `403` | Reconciliation case passes |
+| The validations suite expected `400` for a rejected payload | The API answers a schema failure with `422` | Assert `422` | Validation cases pass |
+| The desktop boundary snapshot listed nine operations too few | `desktop.spec.ts` pins the exact preload surface as a security boundary | Added the nine collection operations | Desktop boundary test passes |
+| `master-data.spec.ts` could not find `New area` | The areas/collectors setup moved under the Collections module behind its own tab | The walkthrough clicks the *Areas & collectors* tab first | 15 Electron tests pass |
+| A route's account dropdown rejected the subscriber id | The option value was the internal `batch_accounts` join id, not the subscriber the payment needs | The option value is the subscriber id, which is also what the row highlight and the payment call use | The route walkthrough selects an account and collects |
+| The signing supervisor could not read what the collector wrote | The remittance block showed the counts but not the stored notes | The collector's note is displayed beside the variance | The walkthrough asserts the stored note |
+| The walkthrough could not find `Open route` | The control carries `aria-label="Open collection route"`, which is its accessible name | The test addresses the accessible name | Route walkthrough opens the form |
+
+The e2e suite runs against the built application in `out/`, so a renderer change requires
+`npm.cmd run build` before `npm.cmd run test:e2e`. That was confirmed twice during this
+phase and is recorded here so a later reviewer does not read a stale bundle as a code
+defect.
+
+Screenshots [route in progress](screenshots/collections-route.png),
+[shortage pending sign-off](screenshots/collections-remittance.png) and
+[route sheet](screenshots/collections-route-sheet.png) are real full-page Electron output
+written by the collection walkthrough. They are recorded as captured evidence; visual
+inspection of these three images is still outstanding for a human reviewer, and the
+900-pixel no-overflow assertion still covers the workspace screen only, so the collection
+screens at that width remain a manual check (FND-07).
+
+Limits: receivables, aging and suspension/reconnection approvals remain Phase 7; reports,
+exports and non-route printing remain Phase 8. The collection evidence uses two accounts
+in one area with one collector and one machine; concurrent posting from three office
+clients, a 20,000-subscriber load target, production LAN security, backup/restore of the
+proof directory and the Windows installer are not claimed by these local tests. The
+printed sheet was asserted from the rendered DOM and not sent to a physical printer.
