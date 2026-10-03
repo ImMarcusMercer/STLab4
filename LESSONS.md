@@ -409,6 +409,31 @@ Draft notes only. Nothing below is implemented.
 - The billing suspension/reconnection rules need the same posted-reason treatment the
   payment reversal already uses: an approved change is a new document with an actor and a
   reason, never an edit to history.
+- The aging band belongs to each invoice's **own** issue date, not to the account's oldest
+  invoice. A fixture that bills every invoice on one date therefore cannot tell a correct
+  banding function from a wrong one, because every answer comes out the same. Staggering
+  the fixture dates is what actually tests the rule.
+- Hiding a command is a legitimate way to avoid a guaranteed refusal, but only when the
+  server has already answered the question. The screen should render eligibility from
+  `suspensionCandidate` / `suspensionBlockedBy` and never re-derive the grace period or the
+  threshold itself, or the two copies drift and the API becomes the surprise party.
+- Do not hand-edit a generated migration to add a check-constraint value. It reads like a
+  small change and it silently desynchronises the applied history from
+  `database/schema.ts`, which `db:generate` then reports as drift. Adding the value to the
+  schema and regenerating keeps one source of truth and produces a migration that can be
+  read and reviewed like any other.
+- Making a fee optional in the input schema is what makes a policy default reachable. A
+  required field cannot fall back to configuration, so "use the office's fee" quietly stops
+  being expressible at the API boundary even though the column exists.
+- An accessible name that is reused across a `select` and the button beside it turns a
+  `getByLabel` into a strict-mode violation. Naming the field and naming the action
+  differently is cheaper than debugging the locator, and it is better for a screen reader.
+- A history list that shows only the stored summary hides the events a reader is scanning
+  for. The summary answers "which document"; the event type answers "what happened", and
+  the trail needs both.
+- When the API refuses something for a whole class of users, the honest screen fix is to
+  not offer the tab. A screen whose every command returns 403 reads as a broken feature
+  rather than as a deliberate restriction.
 
 ## Phase 8 — Reports, dashboard and printing
 
@@ -427,7 +452,35 @@ Draft notes only. Nothing below is implemented.
 - The proof directory needs a backup and restore story, and the recorded SHA-256 exists
   precisely so a restore can be verified rather than assumed.
 - Real multi-client posting under load is where the advisory lock either holds up or
-  does not. Test it deliberately.
+  does not. The three-client concurrency test for receipt numbering (AT-09) confirms
+  sequential, gap-free numbers across parallel API calls.
+- `pg_restore` will not fall back to `PGDATABASE` the way `pg_dump` and `psql` do. It needs
+  an explicit `--dbname`, which is why the connection password belongs in the environment
+  and the database name on the command line: one is needed and is not a secret, the other
+  must not be visible to another logged-in user on a shared office machine.
+- A row written *before* a long operation, so a crash leaves a record, ends up inside the
+  archive that operation produces. A restore therefore rewinds that row to its mid-flight
+  state, and something has to put it back afterwards. Anything asserted in a status field
+  has to survive its own restore.
+- Read-your-own-counts-in-a-separate-transaction is not a small inconsistency. The counts a
+  backup records are what a later restore is judged against, so anything posted between the
+  count and the dump becomes a difference that never existed. `pg_export_snapshot` is what
+  makes the claim true, and holding the exporting transaction open for the length of the dump
+  is the real cost of that guarantee.
+- Exhaustive-record schemas are a trap in Zod 4. `z.record(z.enum([...]), …)` requires every
+  key, so the empty `row_counts` of a recorded *failure* failed validation and took the whole
+  history listing down with it. `z.partialRecord` for anything that is legitimately partial.
+- A restore that kills every session to clear locks will fail the requests of the other two
+  office clients. Only sessions holding an open transaction can block a `pg_restore`, so ask
+  `pg_stat_activity` for `xact_start IS NOT NULL` and leave idle sessions alone.
+- Proving a claim about a file needs a second copy of the truth. "The counts match the
+  archive" was only testable by restoring the archive into its own database and counting it,
+  because comparing the counts against what the API said about them would have agreed with
+  itself.
+- A desktop screen for backups is easy to make into an arbitrary-file-read primitive. The
+  rule that held: the archive is only ever touched by the API's own `pg_dump`/`pg_restore`,
+  no operation returns bytes, and none accepts a path. The storage directory can be displayed
+  as text, because an operator has to know where to copy a backup to removable media.
 
 ## Phase 10 — QA, documentation and defense
 

@@ -72,20 +72,32 @@ Limits: the evidence uses two accounts in one area, one collector and one machin
 
 ## Phase 7 — Receivables and service control
 
-- [ ] Implement outstanding/overdue lists, aging and follow-up filters.
-- [ ] Implement suspension/reconnection approvals, fees and service history.
+Design and execution details: [service control design](docs/PHASE7.md).
+
+- [x] Implement outstanding/overdue lists, aging and follow-up filters.
+- [x] Implement suspension/reconnection approvals, fees and service history.
+
+Verified 2026-10-01: 76 unit tests, 97 PostgreSQL integration tests (28 for receivables and service control) and 17 Electron tests passed. Includes aging buckets derived from the oldest unpaid due date that sum back to the total receivable, filters by collector, area and delinquency age, a configurable grace period and suspension threshold, a policy that refuses to suspend inside the grace period or below the threshold, a suspension document that freezes the arrears and months unpaid at the moment of the decision, a reconnection the API refuses while money is still owed and that carries the policy fee, technician assignment and completion as separate steps where only completion lifts the suspension, an append-only service history, and database guards refusing a suspend/lift/edit/delete through raw SQL. Typecheck, lint, build, database checks, migration consistency and npm audit passed. See [test evidence](docs/TEST_EVIDENCE.md).
+
+Limits: the manual Phase 6 and Phase 7 walkthroughs in TEST_CHECKLIST.md have not been performed by a human and the aging report has not been sent to a physical printer; a 20,000-subscriber load target and three concurrent office clients remain Phase 9 work.
 
 ## Phase 8 — Reports, dashboard and printing
 
-- [ ] Add real KPIs and at least six reports with reconciled totals.
-- [ ] Implement PDF/XLSX exports, receipts and subscriber statements.
+- [x] Add real KPIs and at least six reports with reconciled totals.
+- [x] Implement PDF/XLSX exports, receipts and subscriber statements.
 
 ## Phase 9 — Backup, hardening and deployment
 
-- [ ] Back up database and attachments; verify restore and integrity; test AT-12.
-- [ ] Test concurrent posting/numbering and three office clients; test AT-09.
+Design and execution details: [backup and restore design](docs/PHASE9.md).
+
+- [x] Back up database and attachments; verify restore and integrity; test AT-12.
+- [x] Test concurrent posting/numbering and three office clients; test AT-09.
 - [ ] Review security, structured logs, indexes and realistic data-volume performance.
 - [ ] Package Windows installer and document LAN deployment.
+
+Verified 2026-10-02 for the first task: 189 unit tests, 169 PostgreSQL integration tests (16 of them for backup and restore) and 19 Electron tests passed, along with typecheck, lint and build. A real `pg_dump` custom-format archive is taken of the test database, listed back with `pg_restore` before it is recorded as complete, and checked against the SHA-256 recorded at backup time; a FULL backup additionally copies the GCash payment proofs, each verified against the digest stored when it was uploaded, and abandons the backup if one no longer matches. AT-12 restores over deliberately changed data and asserts the row counts come back to the ones the backup recorded, that a subscriber created after the backup is gone, that the reason reaches the audit trail, and that any table whose count differs is named in the report rather than summarised away. The digest is checked before a restore writes anything, so a damaged or non-archive file is refused with the database unchanged. The consistency guarantee is proved rather than asserted: a payment posted while `pg_dump` is held open is excluded from both the recorded counts and the archive, checked by restoring that archive into a second database and counting it directly. A restore requires the literal confirmation `RESTORE` and a reason, ends only the sessions holding an open transaction, runs as a single transaction so a partial restore rolls back, and re-applies migrations. Permissions are split into read-only `backup.view`/`backup.verify` (owner, admin, auditor), `backup.create` (owner, admin) and `backup.restore` (owner only), and no backup operation returns archive bytes or accepts a path from the desktop. See [test evidence](docs/TEST_EVIDENCE.md).
+
+Limits: a FULL restore does not delete proofs added after the backup (they are unreferenced, so harmless); `pg_dump` and `pg_restore` are taken from `PATH`; the backup screenshots have not been reviewed by a human.
 
 ## Phase 10 — QA, documentation and defense
 
