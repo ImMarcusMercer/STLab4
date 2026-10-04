@@ -19,7 +19,7 @@ beforeAll(async () => {
   const auth = new AuthService(db.pool); owner = (await auth.login('owner', password)).token;
   for (const [username, role] of [['cashier','CASHIER'], ['technician','TECHNICIAN'], ['supervisor','SUPERVISOR']] as const) await auth.createUser(owner, { username, displayName: username, password, roles: [role] });
   cashier = (await auth.login('cashier', password)).token; technician = (await auth.login('technician', password)).token; supervisor = (await auth.login('supervisor', password)).token;
-  app = buildApp({ checkDatabase: async () => undefined, auth });
+  app = buildApp({ checkDatabase: async () => undefined, auth, logLevel: 'silent' });
 });
 afterAll(async () => { await app?.close(); await db?.close(); });
 

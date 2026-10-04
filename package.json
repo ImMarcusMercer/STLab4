@@ -32,6 +32,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx database/migrate.ts",
     "test:db": "tsx scripts/check-database.ts",
+    "test:performance": "tsx scripts/performance-check.ts",
     "test:e2e": "npm run build && playwright test",
     "package:win": "npm run build && electron-builder --win --dir"
   },

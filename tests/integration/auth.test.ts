@@ -19,7 +19,7 @@ const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 beforeAll(async () => {
   database = await createTestDatabase();
   await seedSecurity(database.pool, { username: 'owner', displayName: 'Test Owner', password });
-  app = buildApp({ checkDatabase: async () => undefined, auth: new AuthService(database.pool) });
+  app = buildApp({ checkDatabase: async () => undefined, auth: new AuthService(database.pool), logLevel: 'silent' });
 });
 afterAll(async () => { await app?.close(); await database?.close(); });
 

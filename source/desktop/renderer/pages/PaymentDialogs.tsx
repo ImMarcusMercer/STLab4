@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileCheck2, ShieldAlert, X } from 'lucide-react';
+import { FileCheck2, Printer, ShieldAlert, X } from 'lucide-react';
 import { decimalMoney } from '../../../shared/billing';
 import type { Actor } from '../../../shared/auth';
 import type { Payment, PaymentDetail, PaymentProofContent, PaymentResult } from '../../../shared/payments';
@@ -16,6 +16,7 @@ export function PaymentDialogs({ state, user, onClose, onUnauthorized, onSaved }
   const [proof, setProof] = useState<PaymentProofContent | null>(null);
   const [notes, setNotes] = useState(''); const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [fields, setFields] = useState<Record<string, string[]>>({});
+  const [printed, setPrinted] = useState('');
   const [mode, setMode] = useState<PaymentDialogState['kind']>(state.kind);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { dialog.current?.showModal(); }, []);
@@ -37,6 +38,27 @@ export function PaymentDialogs({ state, user, onClose, onUnauthorized, onSaved }
       else { setError(result.error.message); if (result.error.status === 401) onUnauthorized(); }
     }).catch(() => setError('The receipt could not be read.'));
   }, [mode, payment?.id, proof]);
+
+  /**
+   * Asks the server for the receipt and lets the main process save it.
+   *
+   * Nothing here decides what the receipt says and no bytes are built in the renderer, so the
+   * document that reaches the customer is the same one the API audited.
+   */
+  async function printReceipt() {
+    setBusy(true); setError('');
+    try {
+      const result = await window.bcis.printReceipt(payment!.id);
+      if (!result.ok) { setError(result.error.message); if (result.error.status === 401) onUnauthorized(); return; }
+      // Reported here rather than through onSaved, which closes the dialog. Printing is
+      // something the cashier does while still looking at the payment, and dismissing the
+      // record they were reading to check it would be backwards.
+      setPrinted(result.data.saved
+        ? `Receipt ${result.data.fileName} saved.`
+        : 'Saving was cancelled, so nothing was written.');
+    } catch { setError('The receipt could not be produced. Nothing was printed.'); }
+    finally { setBusy(false); }
+  }
 
   async function act() {
     setBusy(true); setError(''); setFields({});
@@ -100,6 +122,21 @@ export function PaymentDialogs({ state, user, onClose, onUnauthorized, onSaved }
             : <img alt={`GCash receipt for ${payment.receiptNumber ?? payment.referenceNumber ?? 'payment'}`} src={`data:${proof.mimeType};base64,${proof.base64}`} />
           : <button className="refresh-button" aria-label="Open payment receipt" onClick={() => { void window.bcis.getPaymentProof(payment.id).then((result) => { if (result.ok) setProof(result.data); else { setError(result.error.message); if (result.error.status === 401) onUnauthorized(); } }).catch(() => setError('The receipt could not be read.')); }}><FileCheck2 size={15} />Open receipt</button>}
       </div>}
+
+      {/* The official receipt, offered on its own row rather than inside the proof preview: the
+          proof is what the customer sent, this is what the office gives back. */}
+      <div className="document-actions">
+        <button className="refresh-button" disabled={busy} onClick={() => void printReceipt()}>
+          <Printer size={15} />Print official receipt
+        </button>
+        <small className="muted">
+          {printed || (payment.direction === 'REVERSAL'
+            ? `Reversal receipt for ${payment.reversalOfReceipt}.`
+            : payment.status === 'VOID'
+              ? 'This payment was voided, so its receipt shows no money applied.'
+              : 'Produced by the server and recorded in the audit trail as a print.')}
+        </small>
+      </div>
 
       {mode === 'verify' && <div className="account-form">
         {isOwnPayment && <p className="field-warning"><ShieldAlert size={15} />You recorded this payment. The API will refuse your confirmation, so ask another authorised user to check the reference.</p>}

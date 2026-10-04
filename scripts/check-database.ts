@@ -8,7 +8,7 @@ import { buildApp } from '../source/api/app';
 const config = readConfig(process.env);
 await migrateDatabase(config.DATABASE_URL);
 const database = createDatabase(config.DATABASE_URL);
-const app = buildApp({ checkDatabase: database.check });
+const app = buildApp({ checkDatabase: database.check, logLevel: 'silent' });
 try {
   await database.check();
   const before = await database.pool.query('SELECT * FROM application_metadata ORDER BY key');

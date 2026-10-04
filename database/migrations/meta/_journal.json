@@ -99,6 +99,48 @@
       "when": 1790764075175,
       "tag": "0013_collection_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790820233806,
+      "tag": "0014_service_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790825000000,
+      "tag": "0015_service_control_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790824084308,
+      "tag": "0016_service_status_suspended",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790914657271,
+      "tag": "0017_demonic_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791011859093,
+      "tag": "0018_neat_vector",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791098400000,
+      "tag": "0019_search_and_volume_indexes",
+      "breakpoints": true
     }
   ]
 }

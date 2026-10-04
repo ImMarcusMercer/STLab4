@@ -1,6 +1,7 @@
 import 'dotenv/config';
-import { app, BrowserWindow, ipcMain, session, type IpcMainInvokeEvent } from 'electron';
-import { dirname, join } from 'node:path';
+import { app, BrowserWindow, dialog, ipcMain, session, type IpcMainInvokeEvent } from 'electron';
+import { writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getSystemStatus, parseApiUrl } from './api-client';
 import { isTrustedRendererUrl } from './renderer-security';
@@ -94,6 +95,87 @@ void app.whenReady().then(() => {
   ipcMain.handle('bcis:remit-collection-batch', (event, id: unknown, input: unknown) => { trusted(event); return auth.remitCollectionBatch(id, input); });
   ipcMain.handle('bcis:reconcile-collection-batch', (event, id: unknown, input: unknown) => { trusted(event); return auth.reconcileCollectionBatch(id, input); });
   ipcMain.handle('bcis:close-collection-batch', (event, id: unknown, input: unknown) => { trusted(event); return auth.closeCollectionBatch(id, input); });
+  ipcMain.handle('bcis:get-receivable-summary', (event, query: unknown) => { trusted(event); return auth.getReceivableSummary(query); });
+  ipcMain.handle('bcis:list-overdue-receivables', (event, query: unknown) => { trusted(event); return auth.listOverdueReceivables(query); });
+  ipcMain.handle('bcis:get-service-policy', event => { trusted(event); return auth.getServicePolicy(); });
+  ipcMain.handle('bcis:update-service-policy', (event, input: unknown) => { trusted(event); return auth.updateServicePolicy(input); });
+  ipcMain.handle('bcis:list-service-technicians', event => { trusted(event); return auth.listServiceTechnicians(); });
+  ipcMain.handle('bcis:list-suspensions', (event, query: unknown) => { trusted(event); return auth.listSuspensions(query); });
+  ipcMain.handle('bcis:get-suspension', (event, id: unknown) => { trusted(event); return auth.getSuspension(id); });
+  ipcMain.handle('bcis:suspend-service', (event, serviceAccountId: unknown, input: unknown) => { trusted(event); return auth.suspendService(serviceAccountId, input); });
+  ipcMain.handle('bcis:lift-suspension', (event, id: unknown, input: unknown) => { trusted(event); return auth.liftSuspension(id, input); });
+  ipcMain.handle('bcis:request-reconnection', (event, id: unknown, input: unknown) => { trusted(event); return auth.requestReconnection(id, input); });
+  ipcMain.handle('bcis:assign-technician', (event, id: unknown, input: unknown) => { trusted(event); return auth.assignTechnician(id, input); });
+  ipcMain.handle('bcis:complete-reconnection', (event, id: unknown, input: unknown) => { trusted(event); return auth.completeReconnection(id, input); });
+  ipcMain.handle('bcis:get-service-control-history', (event, serviceAccountId: unknown) => { trusted(event); return auth.getServiceControlHistory(serviceAccountId); });
+  ipcMain.handle('bcis:get-report-catalogue', (event) => { trusted(event); return auth.getReportCatalogue(); });
+  ipcMain.handle('bcis:get-report', (event, code: unknown, query: unknown) => { trusted(event); return auth.getReport(code, query); });
+  ipcMain.handle('bcis:get-dashboard', (event, query: unknown) => { trusted(event); return auth.getDashboard(query); });
+
+  /**
+   * Producing an export and saving it are one step here, on purpose.
+   *
+   * The renderer sends a report and a format and gets back a sentence. It never learns a
+   * folder, never holds the bytes for longer than the call, and cannot name the file: the
+   * native dialog picks the destination, and the bytes are written straight from here. A
+   * renderer that could pass its own path would turn a read-only report screen into an
+   * arbitrary-write primitive, so the path only ever comes from the dialog's own answer.
+   */
+  /**
+   * Prints a receipt through the same dialog as an export.
+   *
+   * The cashier names the destination, and the path still only ever comes from the dialog. The
+   * server has already audited the print by the time these bytes exist, so there is no second
+   * record to write here and nothing to unwind if the save is cancelled.
+   */
+  ipcMain.handle('bcis:print-receipt', async (event, id: unknown) => {
+    trusted(event);
+    const result = await auth.printReceipt(id);
+    if (!result.ok) return result;
+    const { fileName, body } = result.data;
+    const chosen = window && await dialog.showSaveDialog(window, {
+      title: 'Print receipt',
+      defaultPath: join(app.getPath('documents'), fileName),
+      filters: [{ name: 'PDF documents', extensions: ['pdf'] }],
+    });
+    if (!chosen?.filePath) return { ok: true, data: { saved: false, fileName, bytes: body.length } };
+    await writeFile(chosen.filePath, body);
+    return { ok: true, data: { saved: true, fileName: basename(chosen.filePath), bytes: body.length } };
+  });
+
+  ipcMain.handle('bcis:export-report', async (event, code: unknown, query: unknown, format: unknown) => {
+    trusted(event);
+    const result = await auth.exportReport(code, query, format);
+    if (!result.ok) return result;
+    const { fileName, body } = result.data;
+    const extension = String(format).toLowerCase();
+    const label: Record<string, string> = { pdf: 'PDF documents', xlsx: 'Excel workbooks', csv: 'CSV files' };
+    const chosen = window && await dialog.showSaveDialog(window, {
+      title: 'Save report',
+      defaultPath: join(app.getPath('documents'), fileName),
+      filters: [{ name: label[extension] ?? 'Documents', extensions: [extension] }],
+    });
+    // A cancelled dialog is a normal outcome, not a failure to report as an error.
+    if (!chosen?.filePath) return { ok: true as const, data: { saved: false, fileName } };
+    try {
+      await writeFile(chosen.filePath, body);
+    } catch {
+      return { ok: false as const, error: { status: 0, message: 'The report could not be written to that location. Check the folder is writable and try again.' } };
+    }
+    return { ok: true as const, data: { saved: true, fileName: basename(chosen.filePath), bytes: body.length } };
+  });
+
+// --------------------------------------------------------------------- backups
+  // Unlike an export, a backup involves no dialog and no bytes here. The archive is written,
+  // read back and restored by the API on the server; the desktop only forwards the request and
+  // shows what came back. There is deliberately no operation that takes a folder or a file name,
+  // because a renderer that could name a path could read or overwrite an archive.
+
+  ipcMain.handle('bcis:list-backups', (event) => { trusted(event); return auth.listBackups(); });
+  ipcMain.handle('bcis:create-backup', (event, input: unknown) => { trusted(event); return auth.createBackup(input); });
+  ipcMain.handle('bcis:verify-backup', (event, id: unknown) => { trusted(event); return auth.verifyBackup(id); });
+  ipcMain.handle('bcis:restore-backup', (event, id: unknown, input: unknown) => { trusted(event); return auth.restoreBackup(id, input); });
+
   createWindow();
 });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

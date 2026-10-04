@@ -57,9 +57,11 @@ npm.cmd run test:db     # Real PostgreSQL migration and readiness check
 npm.cmd run test:integration # Auth/RBAC against a disposable PostgreSQL database
 npm.cmd run test:e2e    # Built Electron integration tests (build + start DB first)
 npm.cmd run db:generate # Generate migration after an intentional schema change
+npm.cmd run package:win  # Build and create unpacked Windows application
+npx electron-builder --win # Generate full NSIS installer
 ```
 
-To run built desktop code, use `npm.cmd run start:api` in one terminal and `npm.cmd start` in another. `package:win` creates an unpacked Windows application; it is not yet the laboratory's final installer.
+To run built desktop code, use `npm.cmd run start:api` in one terminal and `npm.cmd start` in another. `package:win` creates an unpacked Windows application; use `npx electron-builder --win` to generate the full NSIS installer. See [Deployment guide](docs/DEPLOYMENT.md) for details.
 
 ## API
 

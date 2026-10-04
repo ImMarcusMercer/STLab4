@@ -26,6 +26,10 @@ referenced as AT-01 through AT-12; each is only claimed in the phase that tests 
 | Electron startup timed out | Main module awaited `app.whenReady()` at top level, preventing ESM startup completion | Register a promise callback and finish module evaluation | Previously failing startup tests pass |
 | Development IPC rejected a legitimate renderer | Raw origin lacked Chromium's trailing slash | Canonical URL comparison | Regression observed failing before fix; unit and development Electron tests |
 | Local setup could target another host via URL query | pg honors query parameters overriding URL authority | Reject query/fragment in local setup configuration | Three regression cases failed before fix and pass afterward |
+| A multi-page report repeated the last page on every page, losing its earlier rows | `PageWriter.serialise` read `this.page`, the page currently being filled, instead of the page it was asked to serialise | Pass the target page into `serialise` | New geometry regression in `report-exports.test.ts`; every row of a 120-row report now appears exactly once |
+| Report rows ran off the top of the page and broke after about four rows | The row cursor counted up while PDF `y` grows upward, and `fits` compared against the page top rather than the foot | Cursor counts down; the fit test measures against a floor above the bottom margin | Rows now descend the page in order and 12 rows fit one A4 landscape page |
+| Subscriber statement omitted the account it belonged to | The subject block existed only in the service response; no writer emitted it | Subject added to the PDF, XLSX and CSV writers ahead of the column headings | `reports.test.ts` asserts the header in all three formats and the frozen pane follows the taller header |
+| A receipt too large for one page was refused by a duplicated cap in the service | The service and the renderer each decided the limit, so the two could disagree | The renderer owns the limit; the service no longer counts lines | 20-invoice payment returns 422 naming the statement of account, with no print audited |
 
 An independent read-only review identified the URL comparison and database override issues. Both were corrected. Existing student-project Git status was checked and still contains exactly its pre-existing modifications; no student-project code was changed by this work.
 
@@ -350,3 +354,231 @@ in one area with one collector and one machine; concurrent posting from three of
 clients, a 20,000-subscriber load target, production LAN security, backup/restore of the
 proof directory and the Windows installer are not claimed by these local tests. The
 printed sheet was asserted from the rendered DOM and not sent to a physical printer.
+
+## Phase 7 verification — 2026-10-01
+
+| Symptom | Cause | Fix | Evidence |
+|---|---|---|---|
+| The technician query failed at runtime | The projection selected `r.role`, but `user_roles` has no such column | Select `r.role_code` | Technician list is returned and the assignment walkthrough passes |
+| A reconnection request with no fee was refused | `RequestReconnectionInput.feeCentavos` was required, so the policy default was unreachable | Make the fee optional; the service falls back to `reconnectionFeeCentavos` | The walkthrough omits the fee and files at the policy figure |
+| The desktop bridge threw on a lifted suspension | `liftedAt` serialised as a full ISO timestamp while `IsoDate` expects `YYYY-MM-DD` | Return the date only | Lift and completion both render |
+| Every fixture invoice landed in one aging band | The test billed the same date four times, so `monthsUnpaid` could not differ | Stagger the issue dates one month apart | The bands show four different values |
+| `Suspend` was offered on an account inside the grace period | The button was rendered from the row existing, not from the server's eligibility answer | Render the command only when `suspensionCandidate` is true and the account is `ACTIVE` | The grace row has no command, and the API refuses independently |
+| The suspension form vanished as soon as the reason was typed | A conditional in the panel returned early once the reason was non-empty | Track the form unconditionally and disable the submit instead | The form stays open and the confirm button enables |
+| The technician select and its button shared an accessible name | The `select` label and the submit `aria-label` were both "Assign technician" | Label the select `Choose technician` | One locator, one control |
+| The history list never mentioned a reconnection | The list rendered the stored summary, which names the document number rather than the event | Include the event type in each history line | The trail reads "reconnection completed" |
+| An auditor test expected a register row that the API refuses | `listSuspensions` requires `service.control`, which the auditor does not hold | Assert the refusal, and hide the register and policy tabs for users without `service.control` | The auditor sees the aging report only |
+| A post-reconnection suspension was expected to succeed | The account owes nothing after the settlement, so the policy refuses it | Assert `409` for both the settled account and the grace account, and that exactly one suspension row exists | The walkthrough passes |
+| `db:generate` reported drift after Phase 7 | The `service_status` constraint had been hand-edited inside `0015`, so the applied history no longer matched `database/schema.ts` | Add `SUSPENDED` to the schema and regenerate as `0016_service_status_suspended.sql` | `No schema changes, nothing to migrate` for 0000–0016 |
+| The desktop boundary test failed after the bridge grew | `desktop.spec.ts` pins the exact preload surface as a security boundary | Add the thirteen receivables operations to the pinned list | Boundary test passes |
+
+Executed 2026-10-01, each command on its own:
+
+- [x] `npm.cmd run typecheck` — exit 0.
+- [x] `npm.cmd run lint` — exit 0, no warnings.
+- [x] `npm.cmd run build` — exit 0; main, preload and renderer bundles written to `out/`.
+- [x] `npm.cmd test` — `Test Files 13 passed (13)`, `Tests 76 passed (76)`.
+- [x] `npm.cmd run test:integration` — `Test Files 6 passed (6)`, `Tests 97 passed (97)`; `tests/integration/receivables.test.ts` contributes 21.
+- [x] `npx playwright test --config playwright.config.ts tests/e2e/receivables.spec.ts` — `2 passed`.
+- [x] `npm.cmd run test:e2e` — `17 passed`, including the receivables aging/suspension/reconnection walkthrough and the auditor restriction walkthrough.
+- [x] `npm.cmd run test:db` — `PASS: PostgreSQL connection, migration, repeat migration preserves data, API readiness.`
+- [x] `npm.cmd run db:generate` — `No schema changes, nothing to migrate` for 0000–0016.
+- [x] `npm.cmd audit` — `found 0 vulnerabilities`.
+
+Screenshots [aging report](screenshots/receivables-aging.png),
+[suspended account](screenshots/receivables-suspended.png) and
+[reconnected account](screenshots/receivables-reconnected.png) are real full-page Electron
+output written by the receivables walkthrough, and the aging screenshot was taken while the
+window was resized to 900 px, so the no-overflow assertion and the image agree. They are
+recorded as captured evidence; visual inspection of these three images is still outstanding
+for a human reviewer.
+
+Limits: financial reports, exports, subscriber statements and non-route printing remain
+Phase 8. The aging report was asserted from the rendered DOM and has not been sent to a
+physical printer. The manual REC-01 to REC-18 walkthrough in `TEST_CHECKLIST.md` section 10c
+has not been performed by a human. This phase adds no automated evidence for the
+20,000-subscriber load target, concurrent posting from three office clients, LAN security, or
+backup and restore of the proof directory.
+
+## Phase 8 verification - 2026-10-02
+
+Phase 8 covers management KPIs and reports, PDF/XLSX/CSV export, official receipts, subscriber
+statements and the desktop document actions that reach them.
+
+| Command | Observed result |
+|---|---|
+| `npm.cmd run typecheck` | TypeScript strict passed with no diagnostics |
+| `npm.cmd run lint` | ESLint passed |
+| `npm.cmd test` | `Test Files 16 passed (16)`, `Tests 179 passed (179)` |
+| `npm.cmd run test:integration` | `Test Files 8 passed (8)`, `Tests 153 passed (153)`; `tests/integration/receipts.test.ts` contributes 15 and `tests/integration/reports.test.ts` 41 |
+| `npm.cmd run test:e2e` | `17 passed`, including the official-receipt save through the native dialog |
+| `npm.cmd run build` | Main, preload and renderer bundles built; only the pre-existing zod annotation warnings |
+
+Coverage added in this phase:
+
+- `tests/integration/receipts.test.ts` proves exact, partial and advance receipts, that a voided
+  GCash claim keeps its history and reports the discarded claim, that a reversal negates the
+  original allocations, that producing a receipt needs `report.export`, that the audit record
+  is written only after the bytes render, and that an oversized payment is refused.
+- `tests/integration/reports.test.ts` proves all nine reports reconcile, that `AR_AGING` agrees
+  with the receivables summary, and that a statement names its account in the JSON and on paper
+  in PDF, XLSX and CSV.
+- `report-exports.test.ts` reads the y coordinate of every row back out of the content stream.
+  This is the only assertion style that would have caught the page-ordering and cursor-direction
+  defects above: the affected files still contained all their text, still parsed as a PDF and
+  still had valid byte offsets.
+- `payments.spec.ts` saves a receipt through the native save dialog during the cashier
+  walkthrough and asserts the bytes on disk begin `%PDF` and name the receipt number.
+
+Screenshot [official receipt](screenshots/payments-official-receipt.png) was written by that
+walkthrough. It has not been visually inspected by a human reviewer.
+
+Limits: the generated documents have not been sent to a physical printer, and the manual
+`TEST_CHECKLIST.md` walkthrough for this phase has not been performed by a human. The exported
+file is bounded to 5,000 rows per file with a truncation note in the footnote. Backup and restore
+of the generated documents, installer packaging, LAN deployment and three-client concurrency
+remain Phase 9.
+
+## Phase 9 verification - 2026-10-03 (security, logging, indexes, data volume)
+
+Hardening review and the realistic data-volume check. The backup item above is unchanged; the
+concurrency (AT-09) and installer/LAN items in this phase remain pending and are still unchecked in
+`TASK.md`.
+
+| Command | Observed result |
+|---|---|
+| `npm run typecheck` | Passed, no diagnostics |
+| `npm run lint` | Passed |
+| `npm run build` | Main, preload and renderer bundles built |
+| `npm test` | `Test Files 17 passed (17)`, `Tests 200 passed (200)` (was 16 files / 189 tests; `tests/unit/logging.test.ts` adds 11) |
+| `npm run test:integration` | `Test Files 9 passed (9)`, `Tests 163 passed (163)`; `tests/integration/security.test.ts` contributes 8 against a real PostgreSQL database |
+| `npm run test:e2e` | `19 passed` |
+| `npm run test:db` | `PASS: PostgreSQL connection, migration, repeat migration preserves data, API readiness.` |
+| `npm run db:generate` | `No schema changes, nothing to migrate` |
+| `npm run db:migrate` | Migration `0019_search_and_volume_indexes` applied to the local database |
+| `npm run test:performance` | `PASS: 19 screens within budget on 20,000 subscribers, index plans confirmed.` |
+
+Structured logging and redaction are proved by reading real log output, not by inspecting
+configuration. `tests/unit/logging.test.ts` (11 cases): the default level and service name, ISO
+timestamps, redaction of the authorization header, cookies, passwords, tokens and proof bytes, a
+PostgreSQL connection string scrubbed out of an error *message* and out of a *stack*, the request
+serializer exposing only method, URL, request id, address and user agent, the three security
+headers on every response, and the injectable stream. `tests/integration/security.test.ts` (8
+cases): successful and failed logins recorded under `auth.login.succeeded` / `auth.login.failed`
+with no password, no session token and no stored SHA-256 digest; a revoked session; an
+unauthenticated request as `security.unauthenticated`; a refused permission as
+`security.permission_denied`; a readiness failure reported during a database outage with no
+connection string in the line; and no secret anywhere in the captured log.
+
+Data volume. `scripts/performance-check.ts` seeded a throwaway database with 20,000 subscribers,
+20,000 service accounts, 140,000 invoices, 140,000 invoice lines, 41,692 payments, 41,692
+allocations and 181,692 ledger entries, then measured 19 screens through the real routes with
+`BCIS_RUNS=3`. Every screen was inside its budget; the slowest were the overdue worklist at
+2,219 ms against 15,000, the revenue report at 1,436 ms against 10,000 and the dashboard at
+977 ms against 10,000. The check also requires the index plans to be named
+(`subscribers_name_trgm_idx`, `invoices_open_service_idx`, `payments_posted_subscriber_idx`) with no
+sequential scan, and reconciles the receivable total (10,512,576,850 centavos) against the stored
+open balances and the aging buckets.
+
+Defects found and fixed by this review:
+
+1. **`GET /receivables/summary` returned 500 at 20,000 subscribers.** `coalesce(sum(...),0)::int`
+   casts a 64-bit sum to 32 bits; a receivable above PHP 21,474,836.47 overflows, which 20,000
+   accounts pass without any single figure looking unusual. Every money aggregate that spans the
+   whole office is now `bigint`, and `readWideNumbersAsNumbers()` converts 64-bit results to
+   numbers once at the pool so the published contracts are unchanged.
+2. **A database password reached the log through an error stack.** Found by the new integration
+   suite on its first run; `err.message` and `err.stack` are now scrubbed of connection strings
+   and `password=`-style assignments before they are written.
+3. **The plan check itself was measuring the wrong thing.** Straight after a bulk insert, GIN
+   pending lists and an unvisited visibility map make PostgreSQL cost a trigram search far above
+   what it costs in steady state, so the check saw a sequential scan the office would never get.
+   The harness now runs `VACUUM (ANALYZE)` before the plan checks, and below the reviewed volume it
+   checks that the index is available rather than that it is chosen.
+
+Limits: a single billing cycle is capped at PHP 9,999,999.99 by the `moneyBounds` check on every
+stored money column, which at PHP 999 a month is about 10,000 subscribers per cycle; the read paths
+that summarise those cycles are `bigint` and unaffected. The volume check writes invoices directly
+rather than running billing generation, so it measures the read paths rather than the billing write
+path. `npm audit` reports 8 high severity vulnerabilities, all in the `electron-builder` packaging
+chain (GHSA-ch52-4w7c-c8xp), with no non-breaking fix; they are build-time dependencies not loaded by
+the running application, and the finding is carried into the installer item. Screenshots for this
+item do not exist, and no human has reviewed this evidence.
+
+## Phase 9 verification - 2026-10-02
+
+Phase 9 covers database and attachment backup, verified restore, integrity checking and AT-12.
+The concurrency (AT-09), hardening/performance and installer/LAN items in this phase remain
+pending and are still unchecked in `TASK.md`.
+
+| Command | Observed result |
+|---|---|
+| `npm.cmd run typecheck` | TypeScript strict passed with no diagnostics |
+| `npm.cmd run lint` | ESLint passed |
+| `npm.cmd run build` | Main, preload and renderer bundles built |
+| `npm.cmd test` | `Test Files 16 passed (16)`, `Tests 189 passed (189)` |
+| `npm.cmd run test:integration` | `Test Files 9 passed (9)`, `Tests 169 passed (169)`; `tests/integration/backups.test.ts` contributes 16 |
+| `npm.cmd run test:e2e` | `19 passed`, including `tests/e2e/backups.spec.ts` |
+
+Design and the reasoning behind each decision: [PHASE9.md](PHASE9.md).
+
+Coverage added in this phase:
+
+- `tests/integration/backups.test.ts` takes a **real** `pg_dump` custom-format archive, asserts it
+  begins `PGDMP`, that its recorded size and SHA-256 match the bytes on disk, and that the server
+  listed it back with `pg_restore` before recording it as complete.
+- AT-12 restores over deliberately changed data: the row counts come back to the ones the backup
+  recorded, the subscriber created after the backup is gone, the reason reaches `audit_logs`, and
+  any table whose count differs is named in the report.
+- A damaged file (one flipped byte) and a file that is not a PostgreSQL archive are both refused
+  **before anything is written**, and the live subscriber count is asserted unchanged afterwards.
+- The snapshot guarantee is proved rather than asserted. `pg_dump` is held open while a payment is
+  posted; the archive is then restored into a **separate** database and counted directly, so the
+  recorded counts are compared against the bytes that were written rather than against what the API
+  says about them. The subscriber created mid-backup is absent from both.
+- A FULL backup carries a GCash payment proof to disk and back; the same backup is abandoned with a
+  recorded reason when a stored proof no longer matches its uploaded digest.
+- A failed read-back is recorded as `FAILED` with the tool's own words, claims no size, stays visible
+  in the history, and is refused for both verify and restore.
+- The permission split is asserted: cashier refused everything, auditor may view and verify but not
+  create, administrator may create but not restore, owner may do all four.
+- The history is newest-first, contains failures, never returns a connection string, and is marked
+  `no-store`.
+- `tests/unit/auth-client.test.ts` holds the desktop boundary from both sides: nothing comes back
+  but the server's own account, nothing goes out that could name a file, a malformed history is
+  rejected, the confirmation word is required before a request is made, a restore report that
+  disagrees with the backup is shown rather than tidied away, and a backup slower than ten seconds
+  does not time out.
+- `tests/unit/renderer-security.test.ts` asserts no backup call takes a path, folder or file name,
+  that no archive bytes cross the bridge, and that the confirmation word is still checked in the
+  renderer.
+- `tests/e2e/backups.spec.ts` walks the operator's path: the nav entry appears for an owner and not
+  for a cashier, a full backup is taken, the archive on disk begins `PGDMP`, verification reports
+  `Verified`, a subscriber created afterwards is gone after the restore, the restore button stays
+  disabled until `RESTORE` and a reason are typed, and the reason reaches the audit trail.
+
+Screenshots `screenshots/backups-history.png` and `screenshots/backups-restore-confirmation.png`
+were written by that walkthrough and have not been visually inspected by a human reviewer.
+
+Defects found and fixed while building this:
+
+1. **Every restore failed.** `pg_restore: one of -d/--dbname and -f/--file must be specified` --
+   unlike `pg_dump` and `psql`, `pg_restore` does not fall back to `PGDATABASE`. Fixed by passing the
+   database name as `--dbname` while the password stays in `PGPASSWORD`.
+2. **A recorded failure could not be read back.** `CHECK (byte_size >= 1)` with a placeholder of `1`
+   meant a failed backup claimed a size it never had. Now `>= 0`, and a failure claims none.
+3. **One failed backup broke the whole history listing.** `z.record(z.enum([...]))` is exhaustive in
+   Zod 4, so the empty `row_counts` of a recorded failure failed validation and every listing
+   returned 500. Changed to `z.partialRecord`.
+4. **A backup could describe a different database than the one being served.** The routes read
+   `process.env.DATABASE_URL` while authentication used the injected pool; now taken from the pool.
+5. **Recorded counts could not match the archive.** Counting in a separate transaction meant a
+   payment posted during a dump was counted but not archived. Fixed with `pg_export_snapshot`.
+6. **A restore killed every session on the database,** including the idle connections belonging to
+   the other office clients. Now only sessions holding an open transaction are ended.
+7. **A restore rewound the backup's own record to "Backup in progress",** because the archive
+   contains that row as it stood mid-flight. It is set back to `COMPLETED` after the counts check.
+
+Limits: a FULL restore does not delete proofs added after the backup; `pg_dump` and `pg_restore` are
+taken from `PATH`; the backup screenshots have not been reviewed by a human; no physical operator has
+performed the manual walkthrough.

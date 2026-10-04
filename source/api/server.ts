@@ -6,7 +6,12 @@ import { AuthService } from './auth/service';
 
 const config = readConfig(process.env);
 const database = createDatabase(config.DATABASE_URL);
-const app = buildApp({ checkDatabase: database.check, logLevel: config.LOG_LEVEL, auth: new AuthService(database.pool) });
+const app = buildApp({
+  checkDatabase: database.check,
+  logLevel: config.LOG_LEVEL,
+  auth: new AuthService(database.pool),
+  pool: database.pool,
+});
 app.addHook('onClose', () => database.close());
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => { void app.close(); });

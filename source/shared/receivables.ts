@@ -43,6 +43,15 @@ export function agingBucket(overdueDays: number): AgingBucket {
   return 'D90_PLUS';
 }
 
+/**
+ * The published name of each band. It lives here rather than in a screen so the aging
+ * report, the dashboard and the worklist all name a bucket the same way; a label invented
+ * in the renderer is a label the exported PDF will not have.
+ */
+export const agingBucketLabels: Record<AgingBucket, string> = {
+  CURRENT: 'Current (not yet due)', D1_30: '1 to 30 days', D31_60: '31 to 60 days', D61_90: '61 to 90 days', D90_PLUS: '90+ days',
+};
+
 /** Days past due for a due date, measured on `asOf`. Zero means due today, not overdue. */
 export function overdueDays(dueDate: string, asOf: string): number {
   return Math.max(0, daysBetween(dueDate, asOf));
@@ -65,6 +74,9 @@ export function monthsUnpaid(periodLabels: string[]): number {
 
 export const ReceivableSummarySchema = z.object({
   asOf: IsoDate,
+  // The day the figures were produced, which may differ from `asOf` when the report is
+  // being read for a past date. Both are reported so a stale screen cannot look current.
+  dataAsOf: IsoDate,
   currentReceivableCentavos: money,
   overdueReceivableCentavos: money,
   totalReceivableCentavos: money,
@@ -237,7 +249,8 @@ export const LiftSuspensionInput = z.object({ reason }).strict();
 export type LiftSuspensionInput = z.infer<typeof LiftSuspensionInput>;
 
 export const RequestReconnectionInput = z.object({
-  feeCentavos: z.number().int().min(0).max(999999999).default(0),
+  // Left out, the fee comes from the policy, so a clerk does not have to know the tariff.
+  feeCentavos: z.number().int().min(0).max(999999999).optional(),
   technicianId: z.uuid().optional(),
   notes: z.string().trim().max(500).default(''),
   requestedOn: IsoDate.optional(),
@@ -249,6 +262,13 @@ export type AssignTechnicianInput = z.infer<typeof AssignTechnicianInput>;
 
 export const CompleteReconnectionInput = z.object({ completedOn: IsoDate.optional(), notes: z.string().trim().max(500).default('') }).strict();
 export type CompleteReconnectionInput = z.infer<typeof CompleteReconnectionInput>;
+
+/**
+ * A technician is offered as an assignment option, and is listed by the API rather than
+ * filtered in the renderer, so an unassigned technician can never be named by the desktop.
+ */
+export const ServiceTechnicianSchema = z.object({ id: z.uuid(), displayName: z.string(), username: z.string() });
+export type ServiceTechnician = z.infer<typeof ServiceTechnicianSchema>;
 
 export const UpdatePolicyInput = z.object({
   gracePeriodDays: z.number().int().min(0).max(365),
@@ -300,3 +320,6 @@ export function reconnectionBlockedBy(arrearsCentavos: number): string | null {
 }
 
 export { decimalMoney };
+
+/** Centavos as a peso string, for display only: no arithmetic is ever done on the result. */
+export const moneyLabel = (centavos: number) => `PHP ${decimalMoney(centavos)}`;

@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid, boolean, primaryKey, index, jsonb, integer, date, check, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { invoiceStatusValues, invoiceItemTypeValues, ledgerReferenceValues } from '../source/shared/billing';
 import { paymentMethodValues, paymentStatusValues, allocationSourceValues, proofMimeValues } from '../source/shared/payments';
-import { batchStatusValues, documentSequenceKinds } from '../source/shared/collections';
+import { batchStatusValues } from '../source/shared/collections';
+import { suspensionStatusValues, reconnectionStatusValues } from '../source/shared/receivables';
 
 // Workflow-owned domain tables are introduced with their respective phases.
 export const applicationMetadata = pgTable('application_metadata', {
@@ -53,7 +54,7 @@ export const collectionAreas = pgTable('collection_areas', { ...identity(), name
 export const collectors = pgTable('collectors', { ...identity(), name: text('name').notNull(), contact: text('contact').notNull(), notes: text('notes').notNull(), active: boolean('active').notNull().default(true) });
 const assignments = () => ({ areaId: uuid('area_id').references(() => collectionAreas.id), collectorId: uuid('collector_id').references(() => collectors.id) });
 export const subscribers = pgTable('subscribers', { ...identity(), name: text('name').notNull(), contact: text('contact').notNull(), email: text('email').notNull(), addresses: jsonb('addresses').notNull(), ...assignments(), billingDay: integer('billing_day').notNull(), dueDay: integer('due_day').notNull(), status: text('status').notNull(), notes: text('notes').notNull() }, t => [index('subscriber_name_idx').on(t.name), index('subscriber_contact_idx').on(t.contact), index('subscriber_area_idx').on(t.areaId), index('subscriber_collector_idx').on(t.collectorId), check('subscriber_days', sql`${t.billingDay} BETWEEN 1 AND 31 AND ${t.dueDay} BETWEEN 1 AND 31`), check('subscriber_status', sql`${t.status} IN ('ACTIVE','INACTIVE','TERMINATED','ARCHIVED')`)]);
-export const serviceAccounts = pgTable('service_accounts', { ...identity(), subscriberId: uuid('subscriber_id').notNull().references(() => subscribers.id), planId: uuid('plan_id').notNull().references(() => servicePlans.id), planVersion: integer('plan_version').notNull(), installationAddress: text('installation_address').notNull(), activationDate: date('activation_date'), billingStartDate: date('billing_start_date').notNull(), billingDay: integer('billing_day').notNull(), dueDay: integer('due_day').notNull(), currentRateCentavos: integer('current_rate_centavos').notNull(), status: text('status').notNull(), ...assignments(), notes: text('notes').notNull() }, t => [index('service_subscriber_idx').on(t.subscriberId), index('service_plan_idx').on(t.planId), index('service_area_idx').on(t.areaId), index('service_collector_idx').on(t.collectorId), check('service_rate', sql`${t.currentRateCentavos} >= 0`), check('service_days', sql`${t.billingDay} BETWEEN 1 AND 31 AND ${t.dueDay} BETWEEN 1 AND 31`), check('service_status', sql`${t.status} IN ('PENDING','ACTIVE','INACTIVE','TERMINATED','ARCHIVED')`)]);
+export const serviceAccounts = pgTable('service_accounts', { ...identity(), subscriberId: uuid('subscriber_id').notNull().references(() => subscribers.id), planId: uuid('plan_id').notNull().references(() => servicePlans.id), planVersion: integer('plan_version').notNull(), installationAddress: text('installation_address').notNull(), activationDate: date('activation_date'), billingStartDate: date('billing_start_date').notNull(), billingDay: integer('billing_day').notNull(), dueDay: integer('due_day').notNull(), currentRateCentavos: integer('current_rate_centavos').notNull(), status: text('status').notNull(), ...assignments(), notes: text('notes').notNull() }, t => [index('service_subscriber_idx').on(t.subscriberId), index('service_plan_idx').on(t.planId), index('service_area_idx').on(t.areaId), index('service_collector_idx').on(t.collectorId), check('service_rate', sql`${t.currentRateCentavos} >= 0`), check('service_days', sql`${t.billingDay} BETWEEN 1 AND 31 AND ${t.dueDay} BETWEEN 1 AND 31`), check('service_status', sql`${t.status} IN ('PENDING','ACTIVE','SUSPENDED','INACTIVE','TERMINATED','ARCHIVED')`)]);
 export const masterHistory = pgTable('master_history', { id: uuid('id').primaryKey().defaultRandom(), resource: text('resource').notNull(), recordId: uuid('record_id').notNull(), version: integer('version').notNull(), snapshot: jsonb('snapshot').notNull(), reason: text('reason').notNull(), actorId: uuid('actor_id').notNull().references(() => users.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow() }, t => [uniqueIndex('master_history_revision_idx').on(t.resource, t.recordId, t.version)]);
 
 // Billing and ledger. Amounts are integer centavos; posted rows are append-only and
@@ -85,8 +86,9 @@ export const documentSequences = pgTable('document_sequences', {
   nextValue: integer('next_value').notNull().default(1001),
 }, t => [
   primaryKey({ columns: [t.kind, t.year] }),
-  oneOf('document_sequence_kind', t.kind, documentSequenceKinds),
-  check('document_sequence_start', sql`${t.nextValue} >= 1001`),
+  check('sequence_kind', sql`${t.kind} IN ('INVOICE','RECEIPT','BATCH','REMITTANCE','SUSPENSION','RECONNECTION')`),
+  check('sequence_year', sql`${t.year} BETWEEN 2000 AND 2100`),
+  check('sequence_value', sql`${t.nextValue} >= 1001`),
 ]);
 
 export const billingRuns = pgTable('billing_runs', {
@@ -390,4 +392,113 @@ export const batchRemittances = pgTable('batch_remittances', {
   check('remittance_single_variance', sql`(${t.shortageCentavos} = 0 OR ${t.overageCentavos} = 0)`),
   check('remittance_balanced', sql`${t.balanced} = (${t.shortageCentavos} = 0 AND ${t.overageCentavos} = 0)`),
   moneyBounds(t.expectedCashCentavos), moneyBounds(t.cashCentavos), moneyBounds(t.shortageCentavos), moneyBounds(t.overageCentavos),
+]);
+// -------------------------------------------------------------- Phase 7 - service control
+
+export const servicePolicy = pgTable('service_policy', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  gracePeriodDays: integer('grace_period_days').notNull(),
+  suspensionThresholdCentavos: money('suspension_threshold_centavos'),
+  autoSuspend: boolean('auto_suspend').notNull().default(false),
+  reconnectionFeeCentavos: money('reconnection_fee_centavos'),
+  updatedBy: uuid('updated_by').notNull().references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [
+  moneyBounds(t.suspensionThresholdCentavos),
+  moneyBounds(t.reconnectionFeeCentavos),
+  check('policy_grace', sql`${t.gracePeriodDays} BETWEEN 0 AND 365`),
+]);
+
+export const suspensions = pgTable('suspensions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  suspensionNumber: text('suspension_number').notNull().unique(),
+  serviceAccountId: uuid('service_account_id').notNull().references((): AnyPgColumn => serviceAccounts.id, { onDelete: 'restrict' }),
+  status: text('status').$type<(typeof suspensionStatusValues)[number]>().notNull(),
+  reason: text('reason').notNull(),
+  notes: text('notes').notNull().default(''),
+  effectiveDate: date('effective_date').notNull(),
+  gracePeriodDays: integer('grace_period_days').notNull(),
+  thresholdCentavos: money('threshold_centavos'),
+  arrearsAtSuspensionCentavos: money('arrears_at_suspension_centavos'),
+  monthsUnpaidAtSuspension: integer('months_unpaid_at_suspension').notNull(),
+  approvedBy: uuid('approved_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  liftedAt: timestamp('lifted_at', { withTimezone: true }),
+  liftedBy: uuid('lifted_by').references(() => users.id),
+}, t => [
+  index('suspensions_service_idx').on(t.serviceAccountId),
+  index('suspensions_status_idx').on(t.status),
+  check('suspension_number', sql`${t.suspensionNumber} ~ '^SUS-[0-9]{4}-[0-9]{4}$'`),
+  check('suspension_status', sql`${t.status} IN ('ACTIVE','LIFTED','CANCELLED')`),
+  moneyBounds(t.thresholdCentavos),
+  moneyBounds(t.arrearsAtSuspensionCentavos),
+  check('suspension_grace', sql`${t.gracePeriodDays} BETWEEN 0 AND 365`),
+  check('suspension_months', sql`${t.monthsUnpaidAtSuspension} >= 0`),
+]);
+
+export const reconnections = pgTable('reconnections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  reconnectionNumber: text('reconnection_number').notNull().unique(),
+  serviceAccountId: uuid('service_account_id').notNull().references((): AnyPgColumn => serviceAccounts.id, { onDelete: 'restrict' }),
+  // A reconnection may be raised without a suspension (a good-standing customer paying a
+  // reconnection fee), so the link is optional but always points at a suspension when present.
+  suspensionId: uuid('suspension_id').references((): AnyPgColumn => suspensions.id, { onDelete: 'restrict' }),
+  status: text('status').$type<(typeof reconnectionStatusValues)[number]>().notNull(),
+  feeCentavos: money('fee_centavos'),
+  requestedBy: uuid('requested_by').notNull().references(() => users.id),
+  technicianId: uuid('technician_id').references(() => users.id),
+  notes: text('notes').notNull().default(''),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+  assignedAt: timestamp('assigned_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, t => [
+  index('reconnections_service_idx').on(t.serviceAccountId),
+  index('reconnections_status_idx').on(t.status),
+  index('reconnections_suspension_idx').on(t.suspensionId),
+  check('reconnection_number', sql`${t.reconnectionNumber} ~ '^RCO-[0-9]{4}-[0-9]{4}$'`),
+  check('reconnection_status', sql`${t.status} IN ('REQUESTED','ASSIGNED','COMPLETED','CANCELLED')`),
+  moneyBounds(t.feeCentavos),
+]);
+
+// AT-12. A backup is only evidence of anything if it can be shown to be restorable, so each
+// one records the digest of the file it wrote and the row counts that were in the database when
+// it was taken. Restoring checks the digest first and the counts afterwards, and both answers
+// are kept: a digest that matches still does not prove the dump is restorable, and a dump that
+// restores still does not prove it is the right backup.
+//
+// The file name is generated rather than chosen, the counts are read inside the snapshot the
+// dump was taken from, and nothing here can be edited through the application.
+export const backupHistory = pgTable('backup_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // 'FULL' carries the payment proofs alongside the dump. 'DATABASE' is the dump alone, which
+  // is useful for a quick snapshot and is recorded as such so nobody mistakes it for a
+  // complete backup and loses the attachments.
+  kind: text('kind').$type<'FULL' | 'DATABASE'>().notNull(),
+  fileName: text('file_name').notNull().unique(),
+  byteSize: integer('byte_size').notNull(),
+  sha256: text('sha256').notNull(),
+  // Posted financial rows, counted so a restore is checked against something the operator saw
+  // before the restore rather than against the restore's own output.
+  rowCounts: jsonb('row_counts').notNull(),
+  attachmentCount: integer('attachment_count').notNull(),
+  attachmentBytes: integer('attachment_bytes').notNull(),
+  note: text('note').notNull().default(''),
+  status: text('status').$type<'COMPLETED' | 'FAILED'>().notNull(),
+  failureReason: text('failure_reason').notNull().default(''),
+  createdBy: uuid('created_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  // The last restore from this file, not a history of them: audit_logs already holds every
+  // restore attempt, and a second record here would be one more thing to keep in step.
+  restoredAt: timestamp('restored_at', { withTimezone: true }),
+  restoredBy: uuid('restored_by').references(() => users.id),
+}, t => [
+  index('backup_history_created_idx').on(t.createdAt),
+  check('backup_kind', sql`${t.kind} IN ('FULL','DATABASE')`),
+  check('backup_status', sql`${t.status} IN ('COMPLETED','FAILED')`),
+  check('backup_file_name', sql`${t.fileName} ~ '^[a-f0-9-]{36}\\.dump$'`),
+  check('backup_digest', sql`${t.sha256} ~ '^[a-f0-9]{64}$'`),
+  check('backup_byte_size', sql`${t.byteSize} >= 0`),
+  check('backup_note', sql`char_length(${t.note}) <= 200`),
+  check('backup_failure_reason', sql`char_length(${t.failureReason}) <= 400`),
 ]);

@@ -14,7 +14,7 @@ test.beforeAll(async () => {
   const owner = await auth.login('owner', password);
   token = owner.token;
   await auth.createUser(owner.token, { username: 'cashier', displayName: 'Cashier', password, roles: ['CASHIER'] });
-  api = buildApp({ checkDatabase: async () => undefined, auth });
+  api = buildApp({ checkDatabase: async () => undefined, auth, logLevel: 'silent' });
   origin = await api.listen({ host: '127.0.0.1', port: 0 });
   // Synthetic fixtures are created through the API so the desktop test only exercises
   // the screens, not a private database path.

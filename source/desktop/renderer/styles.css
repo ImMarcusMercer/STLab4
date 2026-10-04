@@ -43,6 +43,11 @@ h3 { font-size: 16px; font-weight: 650; margin: 20px 0 9px; letter-spacing: -.3p
 .refresh-button { display: flex; align-items: center; gap: 7px; margin-left: auto; background: white; border: 1px solid #d5deea; border-radius: 5px; padding: 9px 12px; color: #334155; font-size: 11px; white-space: nowrap; }
 .refresh-button:hover:not(:disabled) { background: #f3f6fa; }
 .refresh-button:disabled { opacity: .6; }
+/* A row of document buttons and the note explaining what the button will do. The button keeps
+   the shared margin-left:auto so it sits right whether the row is inside a form or a table
+   footer, and the note is allowed to wrap rather than forcing the row wider than the dialog. */
+.document-actions { display: flex; align-items: center; gap: 12px; margin: 14px 0 0; }
+.document-actions small { margin: 0; max-width: 46ch; line-height: 1.5; }
 .connection-nodes { margin: 0 22px 19px; display: grid; grid-template-columns: 1fr 17px 1fr 17px 1fr; gap: 13px; align-items: center; }
 .connection-nodes > div { background: #f8fafc; border: 1px solid #e9edf3; padding: 13px 10px; border-radius: 6px; display: flex; align-items: center; gap: 9px; }
 .step-number { font-size: 10px; color: #8798ad; font-variant-numeric: tabular-nums; }
@@ -312,6 +317,31 @@ td strong { font-size: 12px; font-weight: 550; color: #263d5d; }
 .route-sheet-print footer span { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 1100px) { .collection-figures { grid-template-columns: minmax(0, 1fr); } }
 
+/* Receivables: the aging figures are read, never typed, so they are shown as a strip of totals
+   with the bucket each one belongs to rather than as editable figures. */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.stat-card { display: grid; gap: 4px; padding: 14px 16px; background: #f8fafc; border: 1px solid #e6ecf4; border-radius: 7px; }
+.stat-card span { font-size: 10px; letter-spacing: .6px; text-transform: uppercase; color: #7b8ca1; }
+.stat-card strong { color: #27384e; font-size: 13px; font-weight: 600; }
+.stat-card .money-cell { font-size: 19px; }
+.stat-card small { font-size: 10px; color: #7b8ca1; }
+.aging-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.aging-cell { display: grid; gap: 3px; padding: 12px 14px; border-radius: 7px; border: 1px solid #e6ecf4; border-left-width: 4px; background: #fff; }
+.aging-cell > span { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: #64748b; }
+.aging-cell strong { font-size: 12px; color: #27384e; font-weight: 600; }
+.aging-cell small { font-size: 10px; color: #94a3b8; }
+.aging-cell.good { border-left-color: #16a34a; }
+.aging-cell.blue { border-left-color: #2563eb; }
+.aging-cell.warn { border-left-color: #d97706; }
+.aging-cell.danger { border-left-color: #dc2626; }
+.badge.danger { color: #b91c1c; background: #fef2f2; }
+.receivables-page table small { display: block; font-size: 10px; color: #7b8ca1; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 18px; margin: 12px 0; }
+.detail-grid > div { display: grid; gap: 2px; }
+.detail-grid dt { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: #7b8ca1; }
+.detail-grid dd { margin: 0; font-size: 12px; font-weight: 600; color: #27384e; }
+.checkbox-label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #334155; font-weight: 550; }
+
 /* The sheet is the only thing on the paper: the workspace is hidden so a printed route is clean. */
 @media print {
   body { background: #fff; }
@@ -325,3 +355,99 @@ td strong { font-size: 12px; font-weight: 550; color: #263d5d; }
   .route-sheet-print thead { display: table-header-group; }
   .route-sheet-print tr { break-inside: avoid; }
 }
+
+/* Phase 8: reports and the dashboard.
+   The screen arranges figures the API computed. Nothing here adds up money or decides a
+   bucket, which is why there are no input controls for any amount on this page. */
+.reports-page { display: block; }
+.report-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.report-picker button { padding: 7px 13px; font-size: 12px; color: #475569; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; cursor: pointer; }
+.report-picker button:hover { border-color: #cbd5e1; color: #1e293b; }
+.report-picker button.active { color: #fff; background: #2563eb; border-color: #2563eb; font-weight: 600; }
+.report-picker button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.inline-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #475569; font-weight: 550; }
+.inline-field input { padding: 7px 9px; font-size: 12px; color: #1e293b; border: 1px solid #d8e0ea; border-radius: 6px; background: #fff; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi-card { display: grid; gap: 4px; padding: 15px 17px; background: #fff; border: 1px solid #e6ecf4; border-top-width: 3px; border-radius: 8px; }
+.kpi-label { font-size: 10px; letter-spacing: .6px; text-transform: uppercase; color: #7b8ca1; }
+.kpi-card .money-cell { font-size: 21px; color: #1e293b; font-weight: 650; }
+.kpi-card small { font-size: 10.5px; color: #94a3b8; }
+/* Tone is carried by the label and the number as well as the border, so a report printed in
+   black and white still says which tile needs attention. */
+.kpi-card.tone-neutral { border-top-color: #94a3b8; }
+.kpi-card.tone-good { border-top-color: #16a34a; }
+.kpi-card.tone-warn { border-top-color: #d97706; }
+.kpi-card.tone-danger { border-top-color: #dc2626; }
+
+.report-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; align-items: start; }
+.report-split > .panel { margin-bottom: 0; }
+@media (max-width: 1180px) { .report-split { grid-template-columns: minmax(0, 1fr); } }
+
+.trend-chart { display: grid; gap: 7px; margin: 10px 0; }
+.trend-row { display: grid; grid-template-columns: 108px minmax(0, 1fr) 92px; align-items: center; gap: 9px; }
+.trend-label { font-size: 11px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trend-bars { display: grid; gap: 3px; }
+.trend-bar { display: block; height: 7px; border-radius: 3px; min-width: 2px; }
+.trend-bar.billed { background: #c7d7ef; }
+.trend-bar.collected { background: #2563eb; }
+.trend-value { font-size: 11.5px; text-align: right; color: #334155; }
+.chart-key { display: flex; gap: 14px; font-size: 10.5px; color: #7b8ca1; margin-bottom: 6px; }
+.chart-key span { display: inline-flex; align-items: center; gap: 5px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.swatch.billed { background: #c7d7ef; }
+.swatch.collected { background: #2563eb; }
+
+.sub-heading { margin: 14px 0 6px; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: #7b8ca1; }
+.method-list, .receipt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.method-list li, .receipt-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 6px; font-size: 12px; color: #334155; }
+.receipt-list li > span:first-child { display: grid; flex: 1; min-width: 0; }
+.receipt-list small, .method-list small { display: block; font-size: 10px; color: #94a3b8; }
+.method-list strong, .receipt-list .money-cell { margin-left: auto; white-space: nowrap; }
+
+.export-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e6ecf4; border-radius: 7px; }
+.export-row .subtle-label { margin-right: 2px; }
+.export-row .muted { flex-basis: 100%; font-size: 11px; }
+.report-meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: #7b8ca1; margin-bottom: 8px; }
+.report-table th, .report-table td { white-space: nowrap; }
+.report-table td { font-size: 12px; }
+.report-table tfoot td { border-top: 2px solid #cbd5e1; font-weight: 600; color: #1e293b; background: #f8fafc; }
+.report-table tfoot tr.total-emphasis td { font-weight: 700; background: #eef2f7; }
+.reconciliation { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 9px 12px; font-size: 11.5px; color: #334155; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; }
+.reconciliation strong { color: #166534; }
+
+/* Printed reports keep the figures, the totals and the reconciliation note, and drop the
+   controls. The note matters on paper: it is what tells a reader the totals were checked. */
+.print-only { display: none; }
+@media print {
+  .export-row, .report-picker, .refresh-button, .aging-cell button { display: none !important; }
+  .print-only { display: block !important; }
+  .report-split, .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-table thead { display: table-header-group; }
+  .report-table tr { break-inside: avoid; }
+  .panel, .kpi-card { break-inside: avoid; }
+  .kpi-card { border: 1px solid #cbd5e1; }
+  .reconciliation { background: #fff; border-color: #94a3b8; }
+}
+
+/* ------------------------------------------------------------------- backups */
+/* The backup screen is mostly a history table, so it reuses the account table panel. What it
+   adds is the warning treatment, because the one control on it that cannot be undone has to look
+   like that before it is pressed rather than after. */
+.backup-request { margin-bottom: 18px; }
+.backup-request h3 { margin: 0 0 6px; font-size: 13px; color: #263d5d; }
+.backup-request > p { margin: 0 0 14px; font-size: 11px; line-height: 1.7; color: #6a7e98; }
+.backup-options { display: grid; gap: 9px; margin-bottom: 14px; }
+.backup-note { display: grid; gap: 7px; font-size: 11px; color: #334155; font-weight: 550; }
+.backup-note input { font-weight: 400; }
+.text-button.danger { color: #b91c1c; display: inline-flex; align-items: center; gap: 5px; margin-left: 12px; }
+.backup-report { margin-bottom: 18px; border-color: #a7f3d0; }
+.backup-report.attention { border-color: #fcd34d; background: #fffdf5; }
+.backup-report h3 { margin: 0 0 6px; font-size: 13px; color: #263d5d; }
+.backup-report > p { margin: 0 0 12px; font-size: 11px; color: #6a7e98; }
+.backup-report footer { display: flex; justify-content: flex-end; padding-top: 12px; }
+.report-differences { margin-bottom: 12px; }
+.report-differences th, .report-differences td { padding: 8px 12px; font-size: 11px; }
+.restore-warning { display: flex; gap: 11px; align-items: flex-start; padding: 13px 15px; margin-bottom: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; color: #991b1b; }
+.restore-warning svg { flex-shrink: 0; margin-top: 1px; }
+.restore-warning p { margin: 0; font-size: 11px; line-height: 1.7; }

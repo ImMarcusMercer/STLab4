@@ -15,7 +15,7 @@ test.beforeAll(async () => {
   const auth = new AuthService(database.pool);
   const owner = await auth.login('owner', password);
   await auth.createUser(owner.token, { username: 'cashier', displayName: 'Test Cashier', password, roles: ['CASHIER'] });
-  api = buildApp({ checkDatabase: async () => undefined, auth });
+  api = buildApp({ checkDatabase: async () => undefined, auth, logLevel: 'silent' });
   origin = await api.listen({ host: '127.0.0.1', port: 0 });
 });
 test.afterAll(async () => { await api?.close(); await database?.close(); });

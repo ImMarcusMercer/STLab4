@@ -21,7 +21,7 @@ export type BatchAccountStatus = z.infer<typeof BatchAccountStatus>;
 export const routeAccountLimit = 500;
 
 /** Gap-free counters shared with billing, so a batch and a remittance number prove a document. */
-export const documentSequenceKinds = ['INVOICE', 'RECEIPT', 'BATCH', 'REMITTANCE'] as const;
+export const documentSequenceKinds = ['INVOICE', 'RECEIPT', 'BATCH', 'REMITTANCE', 'SUSPENSION', 'RECONNECTION'] as const;
 
 const money = z.number().int().min(0).max(999999999);
 

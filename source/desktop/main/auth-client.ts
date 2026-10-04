@@ -17,9 +17,68 @@ import {
   RouteSheetSchema, SubmitBatchInput,
   type BatchDetail, type BatchList, type RouteSheet,
 } from '../../shared/collections';
+import {
+  AssignTechnicianInput, CompleteReconnectionInput, LiftSuspensionInput, ReceivableListSchema, ReceivableQuery,
+  ReceivableSummarySchema, RequestReconnectionInput, ServiceControlEventSchema, ServicePolicySchema, ServiceTechnicianSchema,
+  SuspendServiceInput, SuspensionListSchema, SuspensionQuery, SuspensionSchema, UpdatePolicyInput,
+  type ReceivableList, type ReceivableSummary, type ServiceControlEvent, type ServicePolicy, type ServiceTechnician, type Suspension, type SuspensionList,
+} from '../../shared/receivables';
+import {
+  DashboardQuery, DashboardSchema, ExportFormat, ReportCatalogueSchema, ReportCode, ReportQuery, ReportTableSchema,
+  type Dashboard, type ExportFormat as ExportFormatType, type ReportCatalogue, type ReportTable,
+} from '../../shared/reports';
+import {
+  BackupListSchema, BackupRecordSchema, BackupVerificationSchema, CreateBackupInputSchema, RestoreBackupInputSchema, RestoreReportSchema,
+  type BackupList, type BackupRecord, type BackupVerification, type RestoreReport,
+} from '../../shared/backups';
 
 const LoginResponse = z.object({ token: z.string().regex(/^[a-f0-9]{64}$/), user: ActorSchema });
 const ErrorResponse = z.object({ error: z.object({ message: z.string(), fields: z.record(z.string(), z.array(z.string())).optional() }) });
+
+/** A report export as bytes. The body crosses the bridge, never a path the renderer chose. */
+export type ReportExport = { fileName: string; contentType: string; body: Buffer };
+
+/**
+ * Path separators, reserved characters and control codes. A file name is built here and
+ * joined to a folder on the main process, so none of these may survive. Checked per
+ * character rather than with a range inside one regular expression, which would have to
+ * embed literal control bytes to say what it means.
+ */
+const UNSAFE_IN_NAME = new Set('/\\:*?"<>|'.split(''));
+const isControl = (character: string) => { const code = character.codePointAt(0) ?? 0; return code <= 0x1f || code === 0x7f; };
+
+/** Drops absent filters so the URL carries only what was actually asked for. */
+const compact = (values: Record<string, unknown>): Record<string, string> => Object.fromEntries(
+  Object.entries(values)
+    .filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== null && entry[1] !== '')
+    .map(([key, value]) => [key, String(value)]),
+);
+
+/**
+ * The file name the server suggested, taken from `Content-Disposition` so the save dialog
+ * offers the same name the export was built with. Anything unusable in it is discarded in
+ * favour of a name derived from the report code, and the result is reduced to a bare file
+ * name: a header is attacker-influenced input that ends up on a path.
+ */
+/**
+ * Picks the file name to save under.
+ *
+ * `fallback` is any short kind of document: a report code, or 'receipt' for the official
+ * receipt. It is only reached when the server's own suggestion is missing or unusable, and the
+ * suggestion is preferred because the server is what numbered the document.
+ */
+export function attachmentName(header: string | null, fallbackKind: string, format: ExportFormatType | string): string {
+    const fallback = `${fallbackKind.toLowerCase().replace(/_/g, '-')}.${format.toLowerCase()}`;
+  const suggested = header?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)?.[1]?.trim();
+  if (!suggested) return fallback;
+  // Rejected outright rather than cleaned up. Stripping the separator out of "../../etc/passwd"
+  // leaves "....etcpasswd", which is legal but meaningless, and a name that had to be repaired
+  // is not a name the server built. Anything not exactly a plain file name is discarded.
+  const characters = [...suggested];
+  if (characters.some((character) => UNSAFE_IN_NAME.has(character) || isControl(character))) return fallback;
+  if (suggested === '.' || suggested === '..' || suggested.length > 120) return fallback;
+  return suggested;
+}
 
 export class AuthClient {
   #token: string | null = null;
@@ -27,10 +86,26 @@ export class AuthClient {
   readonly origin: string;
   constructor(origin: string) { this.origin = parseApiUrl(origin); }
 
-  private async request<T>(path: string, schema: z.ZodType<T>, method = 'GET', body?: unknown, token = this.#token): Promise<ApiResult<T>> {
+  /**
+   * One JSON request against the API.
+   *
+   * `token` is passed explicitly where the caller needs to prove a token is
+   * still the current one rather than the one it happened to hold, and `timeoutMs` exists because
+   * a backup is not a normal request: the answer only means something once the server has written
+   * the archive and read it back, which takes longer than a list of subscribers, and a desktop
+   * that gave up early would report a backup as failed while it was still running.
+   */
+  private async request<T>(
+    path: string,
+    schema: z.ZodType<T>,
+    method = 'GET',
+    body?: unknown,
+    token = this.#token,
+    timeoutMs = 10_000,
+  ): Promise<ApiResult<T>> {
     try {
       const response = await fetch(`${this.origin}/api/v1${path}`, {
-        method, redirect: 'error', signal: AbortSignal.timeout(10_000),
+        method, redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
         headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
@@ -228,6 +303,151 @@ export class AuthClient {
     if (!key.success) return { ok: false, error: { status: 422, message: 'Invalid payment.' } };
     return this.request(`/payments/${key.data}/proof`, PaymentProofContentSchema);
   }
+
+  // ---------------------------------------------------------------- Phase 8: reports
+
+  /** Which reports exist and which of them this user may export. */
+  async getReportCatalogue(): Promise<ApiResult<ReportCatalogue>> {
+    return this.request('/reports', ReportCatalogueSchema);
+  }
+
+  async getReport(code: unknown, query: unknown = {}): Promise<ApiResult<ReportTable>> {
+    const parsed = ReportQuery.safeParse(query ?? {});
+    if (!parsed.success) return this.invalid('Check the report filters.', parsed.error);
+    const key = ReportCode.safeParse(code);
+    if (!key.success) return { ok: false, error: { status: 404, message: 'That report does not exist.' } };
+    return this.request(`/reports/${key.data}?${new URLSearchParams(compact(parsed.data))}`, ReportTableSchema);
+  }
+
+  /**
+   * The dashboard takes a date and nothing more. A filter the dashboard cannot honour is
+   * refused here rather than silently dropped, so an owner asking for last March is told.
+   */
+  async getDashboard(query: unknown = {}): Promise<ApiResult<Dashboard>> {
+    const parsed = DashboardQuery.safeParse(query ?? {});
+    if (!parsed.success) return this.invalid('The dashboard answers for one date only.', parsed.error);
+    return this.request(`/dashboard?${new URLSearchParams(compact(parsed.data))}`, DashboardSchema);
+  }
+
+  /**
+   * Fetches an export as bytes. The desktop never renders a report document itself: the PDF,
+   * workbook or CSV is built by the server, and all that arrives here is what to write to
+   * disk and the name the server suggested. The name is taken from the response's own
+   * `Content-Disposition` and sanitised again on the main side before it reaches a dialog.
+   */
+  async exportReport(code: unknown, query: unknown, format: unknown): Promise<ApiResult<ReportExport>> {
+    const key = ReportCode.safeParse(code);
+    if (!key.success) return { ok: false, error: { status: 404, message: 'That report does not exist.' } };
+    const target = ExportFormat.safeParse(format);
+    if (!target.success) return { ok: false, error: { status: 422, message: 'Choose PDF, XLSX or CSV.' } };
+    const parsed = ReportQuery.safeParse(query ?? {});
+    if (!parsed.success) return this.invalid('Check the report filters.', parsed.error);
+    const search = new URLSearchParams({ ...compact(parsed.data), format: target.data });
+    try {
+      const response = await fetch(`${this.origin}/api/v1/reports/${key.data}/export?${search}`, {
+        method: 'GET', redirect: 'error', signal: AbortSignal.timeout(20_000),
+        headers: { Accept: '*/*', ...(this.#token ? { Authorization: `Bearer ${this.#token}` } : {}) },
+      });
+      if (!response.ok) {
+        if (response.status === 401) this.#token = null;
+        const parsedError = ErrorResponse.safeParse(await response.json().catch(() => null));
+        return { ok: false, error: { status: response.status, message: parsedError.success ? parsedError.data.error.message : 'The export could not be produced.' } };
+      }
+      const body = Buffer.from(await response.arrayBuffer());
+      if (body.length === 0) return { ok: false, error: { status: 0, message: 'The server returned an empty file.' } };
+      return {
+        ok: true,
+        data: { fileName: attachmentName(response.headers.get('content-disposition'), key.data, target.data), contentType: response.headers.get('content-type') ?? '', body },
+      };
+    } catch {
+      return { ok: false, error: { status: 0, message: 'The BCIS server could not produce the export. Check the connection and try again.' } };
+    }
+  }
+
+  /**
+   * Fetches the official receipt PDF for a payment.
+   *
+   * The bytes are never handed to the renderer. Producing them is what records the print in the
+   * audit trail, so this request happening is the receipt having been issued. A payment with
+   * nothing to print is refused by the server rather than answered with a blank page, and the
+   * reason it gives is returned unchanged so the cashier can act on it.
+   */
+  async printReceipt(id: unknown): Promise<ApiResult<ReportExport>> {
+    const key = z.uuid().safeParse(id);
+    if (!key.success) return { ok: false, error: { status: 422, message: 'Invalid payment.' } };
+    let response: Response;
+    try {
+      response = await fetch(`${this.origin}/api/v1/payments/${key.data}/receipt`, {
+        method: 'GET', redirect: 'error', signal: AbortSignal.timeout(20_000),
+        headers: { Accept: 'application/pdf', ...(this.#token ? { Authorization: `Bearer ${this.#token}` } : {}) },
+      });
+    } catch {
+      return { ok: false, error: { status: 0, message: 'The BCIS server could not produce the receipt. Check the connection and try again.' } };
+    }
+    if (response.status === 401) this.#token = null;
+    if (!response.ok) {
+      const parsed = ErrorResponse.safeParse(await response.json().catch(() => null));
+      return {
+        ok: false,
+        error: {
+          status: response.status,
+          message: parsed.success ? parsed.data.error.message : 'The receipt could not be produced.',
+        },
+      };
+    }
+    const body = Buffer.from(await response.arrayBuffer());
+    if (body.length === 0) return { ok: false, error: { status: 0, message: 'The server returned an empty receipt.' } };
+    return {
+      ok: true,
+      data: { fileName: attachmentName(response.headers.get('content-disposition'), 'receipt', 'PDF'), contentType: 'application/pdf', body },
+    };
+  }
+
+  // --------------------------------------------------------------------- backups
+  // Every backup operation is a plain request and a plain response. The archive itself never
+  // crosses the bridge: no method returns bytes and none accepts a path, so the renderer cannot
+  // read, move or delete a backup, and the only things that touch those files are the API's own
+  // pg_dump and pg_restore processes on the server.
+
+  async listBackups(): Promise<ApiResult<BackupList>> {
+    return this.request('/backups', BackupListSchema);
+  }
+
+  /**
+   * Takes a backup on the server.
+   *
+   * The timeout is generous because the response only arrives once the finished archive has been
+   * read back with pg_restore, which is the only point at which the answer means anything.
+   */
+  async createBackup(input: unknown): Promise<ApiResult<BackupRecord>> {
+    const parsed = CreateBackupInputSchema.safeParse(input ?? {});
+    if (!parsed.success) return this.invalid('Check the backup details.', parsed.error);
+    return this.request('/backups', BackupRecordSchema, 'POST', parsed.data, undefined, 300_000);
+  }
+
+  async verifyBackup(id: unknown): Promise<ApiResult<BackupVerification>> {
+    const key = z.uuid().safeParse(id);
+    if (!key.success) return { ok: false, error: { status: 404, message: 'That backup does not exist.' } };
+    return this.request(`/backups/${key.data}/verify`, BackupVerificationSchema, 'POST', {}, undefined, 120_000);
+  }
+
+  /**
+   * Restores a backup over the live database.
+   *
+   * The confirmation phrase and the reason are required here as well as on the server, so the
+   * renderer cannot be used to skip the part of the decision that asks the operator to mean it.
+   */
+  async restoreBackup(id: unknown, input: unknown): Promise<ApiResult<RestoreReport>> {
+    const key = z.uuid().safeParse(id);
+    if (!key.success) return { ok: false, error: { status: 404, message: 'That backup does not exist.' } };
+    const parsed = RestoreBackupInputSchema.safeParse(input ?? {});
+    if (!parsed.success) return this.invalid('Type RESTORE and give a reason before restoring.', parsed.error);
+    return this.request(`/backups/${key.data}/restore`, RestoreReportSchema, 'POST', parsed.data, undefined, 600_000);
+  }
+
+  private invalid(message: string, error: z.ZodError): ApiResult<never> {
+    return { ok: false, error: { status: 422, message, fields: z.flattenError(error).fieldErrors as Record<string, string[]> } };
+  }
   async recordPayment(input: unknown): Promise<ApiResult<PaymentResult>> {
     const parsed = RecordPaymentInput.safeParse(input);
     if (!parsed.success) return { ok: false, error: { status: 422, message: 'Check the payment details.', fields: z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
@@ -308,4 +528,88 @@ export class AuthClient {
     if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Invalid close request.' } };
     return this.request(`/collections/batches/${key.data}/close`, BatchDetailSchema, 'POST', parsed.data);
   }
+
+  // ------------------------------------------------------- receivables & service control
+  // Nothing here derives a figure or a lifecycle step. The aging report is a read of open
+  // invoices and the suspension commands are forwarded as given, so the desktop can only ever
+  // show what the API decided and refused.
+
+  async getReceivableSummary(query?: unknown): Promise<ApiResult<ReceivableSummary>> {
+    const filters = typeof query === 'string' ? query : '';
+    return this.request(`/receivables/summary${filters ? `?${filters}` : ''}`, ReceivableSummarySchema);
+  }
+  async listOverdueReceivables(query?: unknown): Promise<ApiResult<ReceivableList>> {
+    const params = new URLSearchParams();
+    if (typeof query === 'string') {
+      for (const [key, value] of new URLSearchParams(query)) params.set(key, value);
+    } else if (query !== undefined && query !== null) {
+      const parsed = ReceivableQuery.safeParse(query);
+      if (!parsed.success) return { ok: false, error: { status: 422, message: 'Invalid receivable filters.' } };
+      for (const [key, value] of Object.entries(parsed.data)) if (value !== undefined && value !== '') params.set(key, String(value));
+    }
+    return this.request(`/receivables/overdue?${params}`, ReceivableListSchema);
+  }
+  async getServicePolicy(): Promise<ApiResult<ServicePolicy>> {
+    return this.request('/service-control/policy', ServicePolicySchema);
+  }
+  async updateServicePolicy(input: unknown): Promise<ApiResult<ServicePolicy>> {
+    const parsed = UpdatePolicyInput.safeParse(input);
+    if (!parsed.success) return { ok: false, error: { status: 422, message: 'Check the policy values.', fields: z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request('/service-control/policy', ServicePolicySchema, 'PUT', parsed.data);
+  }
+  async listServiceTechnicians(): Promise<ApiResult<ServiceTechnician[]>> {
+    return this.request('/service-control/technicians', z.array(ServiceTechnicianSchema));
+  }
+  async listSuspensions(query?: unknown): Promise<ApiResult<SuspensionList>> {
+    const params = new URLSearchParams();
+    if (typeof query === 'string') {
+      for (const [key, value] of new URLSearchParams(query)) params.set(key, value);
+    } else if (query !== undefined && query !== null) {
+      const parsed = SuspensionQuery.safeParse(query);
+      if (!parsed.success) return { ok: false, error: { status: 422, message: 'Invalid suspension filters.' } };
+      for (const [key, value] of Object.entries(parsed.data)) if (value !== undefined && value !== '') params.set(key, String(value));
+    }
+    return this.request(`/service-control/suspensions?${params}`, SuspensionListSchema);
+  }
+  async getSuspension(id: unknown): Promise<ApiResult<Suspension>> {
+    const key = z.uuid().safeParse(id);
+    if (!key.success) return { ok: false, error: { status: 422, message: 'Invalid suspension.' } };
+    return this.request(`/service-control/suspensions/${key.data}`, SuspensionSchema);
+  }
+  async suspendService(serviceAccountId: unknown, input: unknown): Promise<ApiResult<Suspension>> {
+    const key = z.uuid().safeParse(serviceAccountId);
+    const parsed = SuspendServiceInput.safeParse(input);
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Give a written reason for the disconnection.', fields: parsed.success ? {} : z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request(`/service-control/services/${key.data}/suspend`, SuspensionSchema, 'POST', parsed.data);
+  }
+  async liftSuspension(id: unknown, input: unknown): Promise<ApiResult<Suspension>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = LiftSuspensionInput.safeParse(input ?? {});
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Give a written reason for restoring service.', fields: parsed.success ? {} : z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request(`/service-control/suspensions/${key.data}/lift`, SuspensionSchema, 'POST', parsed.data);
+  }
+  async requestReconnection(id: unknown, input: unknown): Promise<ApiResult<Suspension>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = RequestReconnectionInput.safeParse(input ?? {});
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Check the reconnection request.', fields: parsed.success ? {} : z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request(`/service-control/suspensions/${key.data}/reconnection`, SuspensionSchema, 'POST', parsed.data);
+  }
+  async assignTechnician(id: unknown, input: unknown): Promise<ApiResult<Suspension>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = AssignTechnicianInput.safeParse(input);
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Choose a technician for the visit.', fields: parsed.success ? {} : z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request(`/service-control/suspensions/${key.data}/reconnection/assign`, SuspensionSchema, 'POST', parsed.data);
+  }
+  async completeReconnection(id: unknown, input: unknown): Promise<ApiResult<Suspension>> {
+    const key = z.uuid().safeParse(id);
+    const parsed = CompleteReconnectionInput.safeParse(input ?? {});
+    if (!key.success || !parsed.success) return { ok: false, error: { status: 422, message: 'Check the completion details.', fields: parsed.success ? {} : z.flattenError(parsed.error).fieldErrors as Record<string, string[]> } };
+    return this.request(`/service-control/suspensions/${key.data}/reconnection/complete`, SuspensionSchema, 'POST', parsed.data);
+  }
+  async getServiceControlHistory(serviceAccountId: unknown): Promise<ApiResult<ServiceControlEvent[]>> {
+    const key = z.uuid().safeParse(serviceAccountId);
+    if (!key.success) return { ok: false, error: { status: 422, message: 'Invalid service account.' } };
+    return this.request(`/service-control/services/${key.data}/history`, z.array(ServiceControlEventSchema));
+  }
 }
+

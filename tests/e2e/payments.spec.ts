@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type Page } from '@playwright/test';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createTestDatabase } from '../helpers/database';
 import { seedSecurity } from '../../database/seed-security';
@@ -29,7 +29,7 @@ test.beforeAll(async () => {
   const owner = await auth.login('owner', password);
   token = owner.token;
   await auth.createUser(owner.token, { username: 'cashier', displayName: 'Cashier', password, roles: ['CASHIER'] });
-  api = buildApp({ checkDatabase: async () => undefined, auth });
+  api = buildApp({ checkDatabase: async () => undefined, auth, logLevel: 'silent' });
   origin = await api.listen({ host: '127.0.0.1', port: 0 });
   // Synthetic fixtures are created through the API so the desktop test only exercises
   // the screens, not a private database path. The later due date is created first, so a
@@ -122,6 +122,28 @@ test('cash settles the oldest due invoice first, holds an overpayment and is rev
     await expect(dialog.getByRole('row', { name: /INV-2026-1001 Payment PHP 350\.00/ })).toBeVisible();
     await expect(dialog.getByRole('row', { name: /Total applied PHP 949\.00/ })).toBeVisible();
     await page.screenshot({ path: 'docs/screenshots/payments-receipt.png', fullPage: true });
+
+    // The official receipt is the document the customer leaves with. It is produced by the
+    // API, so the walkthrough asks the main process to save it and then reads the bytes that
+    // actually landed on disk rather than trusting the confirmation message.
+    const chosen = join(proofDir, 'official-receipt.pdf');
+    desktop.evaluate(async ({ dialog: native }, target) => {
+      // The native dialog cannot be driven from the page, so it is answered here. Only the
+      // path is supplied, which is the one value the renderer is not allowed to choose.
+      native.showSaveDialog = async () => ({ canceled: false, filePath: target as string });
+    }, chosen);
+    await dialog.getByRole('button', { name: 'Print official receipt' }).click();
+    // The outcome is reported inside the dialog, which stays open: printing is done while the
+    // cashier is still reading the payment.
+    await expect(dialog.getByText(/RCT-2026-1002.*saved/)).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'RCT-2026-1002' })).toBeVisible();
+    const printed = await readFile(chosen);
+    expect(printed.subarray(0, 5).toString()).toBe('%PDF-');
+    // The receipt names the receipt the cashier opened, so the document can be matched to the
+    // payment history without a separate note.
+    expect(printed.toString('latin1')).toContain('RCT-2026-1002');
+    await page.screenshot({ path: 'docs/screenshots/payments-official-receipt.png', fullPage: true });
+
     await dialog.getByRole('button', { name: 'Reverse', exact: true }).click();
     await dialog.getByLabel('Reversal reason').fill('Collector entered the wrong subscriber');
     await dialog.getByRole('button', { name: 'Reverse payment', exact: true }).click();

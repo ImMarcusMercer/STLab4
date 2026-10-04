@@ -10,7 +10,7 @@ test.beforeAll(async () => {
   db = await createTestDatabase(); await seedSecurity(db.pool, { username: 'owner', displayName: 'Owner', password });
   const auth = new AuthService(db.pool); const owner = await auth.login('owner', password);
   await auth.createUser(owner.token, { username: 'cashier', displayName: 'Cashier', password, roles: ['CASHIER'] });
-  api = buildApp({ checkDatabase: async () => undefined, auth }); origin = await api.listen({ host: '127.0.0.1', port: 0 });
+  api = buildApp({ checkDatabase: async () => undefined, auth, logLevel: 'silent' }); origin = await api.listen({ host: '127.0.0.1', port: 0 });
 });
 test.afterAll(async () => { await api?.close(); await db?.close(); });
 async function signIn(page: Page, username: string) { await page.getByLabel('Username', { exact: true }).fill(username); await page.getByLabel('Password', { exact: true }).fill(password); await page.getByRole('button', { name: 'Sign in', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Your BCIS workspace' })).toBeVisible(); }

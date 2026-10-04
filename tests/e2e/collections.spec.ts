@@ -24,7 +24,7 @@ test.beforeAll(async () => {
   token = (await auth.login('owner', password)).token;
   // A supervisor is the second pair of eyes: they sign a remittance they did not count.
   await auth.createUser(token, { username: 'supervisor', displayName: 'Supervisor', password, roles: ['SUPERVISOR'] });
-  api = buildApp({ checkDatabase: async () => undefined, auth });
+  api = buildApp({ checkDatabase: async () => undefined, auth, logLevel: 'silent' });
   origin = await api.listen({ host: '127.0.0.1', port: 0 });
   // Synthetic fixtures go through the API, so the desktop test only exercises the screens.
   const create = async (resource: string, data: unknown) => {

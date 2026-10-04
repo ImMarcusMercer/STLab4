@@ -18,12 +18,23 @@ export async function authRoutes(app: FastifyInstance, auth: AuthService) {
   app.addHook('onSend', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
   app.post('/api/v1/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const input = parse(LoginInput, request.body);
-    return auth.login(input.username, input.password);
+    try {
+      const session = await auth.login(input.username, input.password);
+      // The username is the point of the line; the password and the issued token are not
+      // logged at all, on either outcome. A refused sign-in is the line an operator looks
+      // for when a cashier cannot get in.
+      request.log.info({ event: 'auth.login.succeeded', username: input.username }, 'Signed in');
+      return session;
+    } catch (error) {
+      request.log.warn({ event: 'auth.login.failed', username: input.username, code: (error as ApiError).code ?? 'ERROR' }, 'Sign-in refused');
+      throw error;
+    }
   });
   app.get('/api/v1/auth/me', (request) => auth.authorize(token(request)));
   for (const action of ['logout', 'lock'] as const) {
     app.post(`/api/v1/auth/${action}`, async (request, reply) => {
       await auth.revoke(token(request), `auth.${action}`);
+      request.log.info({ event: 'auth.session.revoked', action }, 'Session ended');
       return reply.code(204).send();
     });
   }

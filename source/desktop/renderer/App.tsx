@@ -1,22 +1,36 @@
 import { MasterPage } from './pages/MasterPage';
 import { useEffect, useState } from 'react';
-import { ArrowRight, Cable, Check, CircleHelp, ClipboardList, CreditCard, FileText, LayoutDashboard, LockKeyhole, RefreshCw, Server, Settings2, ShieldCheck, Users, Wallet, Wifi } from 'lucide-react';
+import { ArrowRight, Cable, Check, CircleHelp, ClipboardList, CreditCard, FileText, HardDriveDownload, LayoutDashboard, LockKeyhole, RefreshCw, Server, Settings2, ShieldCheck, Users, Wallet, Wifi } from 'lucide-react';
 import type { ConnectionResult } from '../../shared/contracts';
 import { roleNames, type Actor } from '../../shared/auth';
 import { UsersPage } from './pages/UsersPage';
 import { BillingPage } from './pages/BillingPage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { CollectionsPage } from './pages/CollectionsPage';
+import { ReceivablesPage } from './pages/ReceivablesPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { BackupsPage } from './pages/BackupsPage';
 
 const navigation = [
   { name: 'Subscribers', icon: Users, permission: 'subscriber.view' }, { name: 'Billing', icon: FileText, permission: 'billing.view' },
   { name: 'Payments', icon: CreditCard, permission: 'payment.view' }, { name: 'Collections', icon: Wallet, permission: 'collection.view' },
   { name: 'Receivables', icon: ClipboardList, permission: 'receivable.view' }, { name: 'Services', icon: Cable, permission: 'service.view' },
-  { name: 'Reports', icon: FileText, permission: 'report.view' }, { name: 'Administration', icon: Settings2, permission: 'user.manage' },
+  { name: 'Reports', icon: FileText, permission: 'report.view' }, { name: 'Backups', icon: HardDriveDownload, permission: 'backup.view' },
+  { name: 'Administration', icon: Settings2, permission: 'user.manage' },
 ];
 
+const pageTargets = {
+  Administration: 'users', Subscribers: 'subscribers', Services: 'services', Collections: 'collections',
+  Billing: 'billing', Payments: 'payments', Receivables: 'receivables', Reports: 'reports', Backups: 'backups',
+} as const;
+type Page = 'overview' | typeof pageTargets[keyof typeof pageTargets];
+const pageTitles: Record<Page, string> = {
+  overview: 'Overview', users: 'Administration', subscribers: 'Subscribers', services: 'Services',
+  collections: 'Collections', billing: 'Billing', payments: 'Payments', receivables: 'Receivables', reports: 'Reports', backups: 'Backups',
+};
+
 export function App({ user, onLock, onLogout, onUnauthorized, onSessionRefresh }: { user: Actor; onLock(): void; onLogout(): void; onUnauthorized(): void; onSessionRefresh(): Promise<void> }) {
-  const [page, setPage] = useState<'overview' | 'users' | 'subscribers' | 'services' | 'areas' | 'collections' | 'billing' | 'payments'>('overview');
+  const [page, setPage] = useState<Page>('overview');
   const [connection, setConnection] = useState<ConnectionResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkedAt, setCheckedAt] = useState<string>();
@@ -45,17 +59,20 @@ export function App({ user, onLock, onLogout, onUnauthorized, onSessionRefresh }
         <p className="nav-label">WORKSPACE</p>
         <button className={`nav-item ${page === 'overview' ? 'active' : ''}`} aria-current={page === 'overview' ? 'page' : undefined} onClick={() => setPage('overview')}><LayoutDashboard size={18} /> Overview</button>
         {navigation.filter((item) => user.permissions.includes(item.permission)).map(({ name, icon: Icon }) => {
-          const target = name === 'Administration' ? 'users' : name === 'Subscribers' ? 'subscribers' : name === 'Services' ? 'services' : name === 'Collections' ? 'collections' : name === 'Billing' ? 'billing' : name === 'Payments' ? 'payments' : null;
-          return <button key={name} className={`nav-item ${page === target ? 'active' : ''}`} disabled={!target} onClick={() => { if (target) setPage(target); }} title={target ? name : `${name} will be added in a later phase`}><Icon size={18}/><span>{name}</span>{!target && <LockKeyhole className="nav-lock" size={12}/>}</button>;
+          const target = pageTargets[name as keyof typeof pageTargets];
+          return <button key={name} className={`nav-item ${page === target ? 'active' : ''}`} onClick={() => setPage(target)}><Icon size={18}/><span>{name}</span></button>;
         })}
       </nav>
       <div className="sidebar-footer"><ShieldCheck size={19} /><div><strong>{user.displayName}</strong><span>{user.roles.map((role) => roleNames[role]).join(', ')}</span></div></div>
     </aside>
 
     <main>
-      <header className="topbar"><div>Workspace <span>/</span> <strong>{{ users: 'Administration', overview: 'Overview', subscribers: 'Subscribers', services: 'Services', areas: 'Collections', collections: 'Collections', billing: 'Billing', payments: 'Payments' }[page]}</strong></div><div className="session-actions"><button onClick={onLock}><LockKeyhole size={14} />Lock workspace</button><button onClick={onLogout}>Sign out</button></div></header>
+      <header className="topbar"><div>Workspace <span>/</span> <strong>{pageTitles[page]}</strong></div><div className="session-actions"><button onClick={onLock}><LockKeyhole size={14} />Lock workspace</button><button onClick={onLogout}>Sign out</button></div></header>
       <div className="page-content">
-        {page === 'users' && user.permissions.includes('user.manage') ? <UsersPage user={user} onUnauthorized={onUnauthorized} onSessionRefresh={onSessionRefresh} /> : page === 'billing' && user.permissions.includes('billing.view') ? <BillingPage user={user} onUnauthorized={onUnauthorized} /> : page === 'payments' && user.permissions.includes('payment.view') ? <PaymentsPage user={user} onUnauthorized={onUnauthorized} /> : page === 'collections' && user.permissions.includes('collection.view') ? <CollectionsPage user={user} onUnauthorized={onUnauthorized} /> : page === 'subscribers' || page === 'services' || page === 'areas' ? <MasterPage key={page} initial={page} user={user} onUnauthorized={onUnauthorized}/> : <>
+        {page === 'users' && user.permissions.includes('user.manage') ? <UsersPage user={user} onUnauthorized={onUnauthorized} onSessionRefresh={onSessionRefresh} /> : page === 'billing' && user.permissions.includes('billing.view') ? <BillingPage user={user} onUnauthorized={onUnauthorized} /> : page === 'payments' && user.permissions.includes('payment.view') ? <PaymentsPage user={user} onUnauthorized={onUnauthorized} /> : page === 'collections' && user.permissions.includes('collection.view') ? <CollectionsPage user={user} onUnauthorized={onUnauthorized} /> : page === 'receivables' && user.permissions.includes('receivable.view') ? <ReceivablesPage user={user} onUnauthorized={onUnauthorized} />
+        : page === 'reports' && user.permissions.includes('report.view') ? <ReportsPage user={user} onUnauthorized={onUnauthorized} />
+        : page === 'backups' && user.permissions.includes('backup.view') ? <BackupsPage user={user} onUnauthorized={onUnauthorized} />
+        : page === 'subscribers' || page === 'services' ? <MasterPage key={page} initial={page} user={user} onUnauthorized={onUnauthorized}/> : <>
         <div className="page-heading"><div><p className="eyebrow">BUKIDNON CABLE & INTERNET SERVICES</p><h1>Your BCIS workspace</h1><p className="muted">A connected foundation for your billing and collection operations.</p></div><span className="heading-icon"><Cable size={29} /></span></div>
 
         <section className={`connection-card ${!loading && !ready ? 'attention' : ''}`} aria-label="System connection" aria-busy={loading}>
