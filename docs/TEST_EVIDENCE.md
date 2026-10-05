@@ -582,3 +582,157 @@ Defects found and fixed while building this:
 Limits: a FULL restore does not delete proofs added after the backup; `pg_dump` and `pg_restore` are
 taken from `PATH`; the backup screenshots have not been reviewed by a human; no physical operator has
 performed the manual walkthrough.
+
+## Phase 10 task 1 verification - 2026-10-05 (demonstration dataset)
+
+Section 8 of the laboratory asks for a minimum synthetic dataset that makes the finished system
+demonstrable. `npm run db:seed:demo` writes it into a development database by driving the real
+Fastify routes with `app.inject`, then reads the result back and prints every minimum with its
+actual figure.
+
+| Command | Observed result |
+|---|---|
+| `npm.cmd run typecheck` | TypeScript strict passed with no diagnostics |
+| `npm.cmd run lint` | ESLint passed |
+| `npm.cmd test` | `Test Files 17 passed (17)`, `Tests 200 passed (200)` |
+| `npm.cmd run test:integration` | `Test Files 10 passed (10)`, `Tests 171 passed (171)` in 111 s; the new `tests/integration/demo-dataset.test.ts` contributes 8 |
+| `npm.cmd run db:seed:demo` | `PASS: the demonstration dataset meets every minimum in section 8` - 6 staff, 3/2/2 plans, 50 subscribers, 63 service accounts, 3 collectors, 3 areas, 5 periods, 36 cash and 16 verified GCash payments, 10 partial, 3 advance, 20 overdue accounts over 5 aging buckets, 1 reversal, 1 void, 3 closed routes, 2 suspension/reconnection scenarios; 188 invoices, 53 receipts and 437 audit entries written through the API in 11 s |
+
+The seed was run against a fresh development database (`DROP DATABASE bcis`, recreate,
+`db:migrate`, `db:seed`, `db:seed:demo`) because a half-finished earlier attempt had left rows
+behind and the seed deliberately refuses to run over existing demonstration data.
+
+What the integration suite proves in addition to the printed table:
+
+- For every subscriber, four identities hold at once: billed = paid + open, paid = the standing
+  allocations, received = allocations + credit still held, and the ledger's net balance =
+  open - credit. All four are computed in one SQL pass over the rows, not from the seed's own
+  bookkeeping.
+- Every stored ledger running balance is reproduced by re-summing its own entries in date and
+  entry-number order.
+- An unconfirmed GCash claim carries no receipt number and no standing allocation.
+- Receipt numbers per year run from 1001 with no gap and no repeat.
+- The register shows one still-ACTIVE suspension and one LIFTED suspension whose reconnection
+  completed, and the append-only service history records four control events.
+- A second run over the same database is refused.
+
+Defects found and fixed while building this:
+
+1. **The policy update was refused with 403 on the development database** although the same call
+   succeeded on a test database. `role_permissions` is only written by the security seed, so a
+   database seeded before Phase 7 introduced `service.control` never received it, and no
+   migration tops it up. The demonstration seed now runs the same idempotent security seed first,
+   which inserts missing permissions and leaves an existing owner's password alone.
+2. **Recording cash on a route sheet was refused with 403.** `collections.attach` requires
+   `collection.manage` on top of `payment.create`, which only the owner and the administrator
+   hold; the cashier and the supervisor hold one of the two. Route cash is now recorded by the
+   administrator.
+3. **The reconnection assign step refused a second assignment** because passing `technicianId`
+   in the reconnection request already assigns the technician. The seed now requests, assigns
+   and completes as three separate steps, which is also the walkthrough the laboratory wants.
+4. **Looking up a suspension by `?serviceAccountId=` answered 422.** `SuspensionQuery` is
+   `.strict()` and has no such field, so the strict parser rejected the whole query. The seed
+   now lists the register and selects the row itself.
+5. In the test, the gap-free receipt assertion assumed numbering began at `0001`; the office
+   counter begins at `1001` (`document_sequences` seeds it there), so the assertion now checks
+   contiguity from the first issued number.
+6. In the test, the unconfirmed-claim assertion counted every allocation belonging to a
+   non-posted payment; a reversed payment keeps its old allocation rows as history, so the
+   assertion now counts only allocations that still stand.
+
+Limits: the demonstration password is written only to the ignored local `.env` and
+`.local/demo-credentials.txt`; the dataset is never re-seeded over posted history, so another
+rehearsal needs a fresh database; dates are relative to the day of the seed and drift if the
+database is left standing; no human has yet walked the demonstration on screen.
+
+## Phase 10 task 2 verification - 2026-10-05 (AT-01 to AT-12)
+
+Section 7 of the laboratory requires all twelve acceptance cases to be evidenced, and section
+7.1 asks for automated output, API/integration results, desktop evidence, artifacts showing
+expected balances, and a bug log. The report is `docs/ACCEPTANCE.md`; this section records how
+it was verified.
+
+| Command | Observed result |
+|---|---|
+| `npm.cmd run typecheck` | TypeScript strict passed with no diagnostics |
+| `npm.cmd run lint` | ESLint passed |
+| `npm.cmd test` | `Test Files 17 passed (17)`, `Tests 200 passed (200)` |
+| `npm.cmd run test:integration` | `Test Files 11 passed (11)`, `Tests 186 passed (186)` in 116 s - 11 files where there were 10 |
+| `npm.cmd run test:e2e` | `19 passed` |
+| `npm.cmd run test:db` | connection, migration, repeat migration and readiness passed |
+
+Two defects were found by auditing the evidence rather than by a failing command:
+
+1. **The Phase 5 payment API suite was missing from the repository.** `TEST_EVIDENCE.md` and
+   `TASK.md` both claim 14 PostgreSQL payment tests covering AT-01 to AT-06, and the checklist
+   still points at them, but `tests/integration/payments.test.ts` was deleted in commit
+   `98b3192` ("Phase 9 complete: installer + LAN docs") and no later suite replaced the
+   coverage: `receipts.test.ts` proves printing, not posting. Restored from `04bf5d7`, where it
+   passes unmodified against the current API, so AT-01 to AT-06 have API evidence again.
+   Regression: the restored file, 14 tests, in the integration run above.
+2. **AT-09 had no concurrency evidence for money.** The existing concurrent tests covered
+   billing generation, owner removal and stale edits, but nothing posted payments from two
+   sessions at once. Added *posts from three office sessions at once without repeating a
+   receipt number (AT-09)*, which fires two `POST /payments` and a register read on separate
+   connections and requires the two receipts to be the next two numbers and unique, every peso
+   to be either applied or held as credit, and no receipt number to appear twice in the table.
+   Regression: `tests/integration/payments.test.ts`, last test in the file (15 tests total).
+
+A third defect, found while seeding the demonstration dataset for task 1, is recorded there:
+`role_permissions` is only written by the security seed, so a development database seeded
+before Phase 7 added `service.control` refused the demonstration seed's policy update.
+
+The matrix in `docs/ACCEPTANCE.md` names the exact test title behind each AT so a reviewer can
+find it by searching the source instead of trusting the table.
+
+Limits: no acceptance case has been performed manually - every `PAY-*`, `COL-*`, `REC-*` and
+`SEC-01` to `SEC-03` checklist item is still unticked; AT-09 is proved for concurrent API
+sessions against one PostgreSQL instance, not on three physical machines; no report or receipt
+has been sent to a physical printer; the 22 screenshots in `docs/screenshots` have not been
+visually inspected by a human; `npm audit` still reports the 8 build-time `electron-builder`
+vulnerabilities recorded as AUTO-07 Fail.
+
+## Phase 10 task 3 verification - 2026-10-05 (technical documentation, user manual, ERD, screenshots, samples)
+
+Date: 2026-10-05
+
+Commands run:
+- npm.cmd run check (typecheck + lint + unit)
+- npm.cmd run test:integration (PostgreSQL integration)
+- npm.cmd run test:e2e (built Electron)
+- API export checks against synthetic demo dataset on 127.0.0.1:3100
+
+Results:
+- TypeScript strict: pass
+- ESLint: pass
+- Unit tests: 200 passed (17 files)
+- Integration tests: 186 passed (11 files)
+- Electron E2E: 21 passed (all specs)
+
+Deliverables:
+- docs/ERD.md — five Mermaid diagrams, rules, relationship inventory verified against database/migrations/0001–0017; FK semantics match schema.
+- docs/USER_MANUAL.md — connection card, role matrix, per-screen walkthroughs, UI labels, troubleshooting, 24-screenshot index, limits.
+- docs/samples/README.md — index and reproduction commands (notes RCT-2026-1001 receipt line cap 422).
+- docs/samples/ — 6 artifacts produced from synthetic demo dataset on 2026-10-05.
+- tests/e2e/reports.spec.ts — dashboard and Reports tab coverage, role-based export visibility.
+- docs/screenshots — reports-dashboard.png, reports-aging.png added (total 24).
+
+Verification details:
+- Exports reproduced with owner token; COLLECTIONS granularity MONTH, SUBSCRIBER_LEDGER full range.
+- Report catalogue matches UI (9 reports).
+- Receipt line cap behavior confirmed.
+
+Defects/notes:
+- None introduced by docs changes.
+- Screenshots not visually inspected by human.
+
+Pass: documentation present, samples reproducible, tests green, screenshots present.
+
+## Phase 10 task 4 verification - 2026-10-05 (release and demo prep)
+
+Deliverables:
+- docs/DEMO_SCRIPT.md — 5–7 minute walkthrough covering login, master data, billing, payments, collections/remittances, receivables/control, reports/exports, backups.
+- docs/RELEASE_NOTES.md — build/installer steps, pre-release checks, known limits (LAN/printer/human review/audit), deployment notes.
+
+Status: task 4 complete for prep; live demonstration/defense remains a presentation step (documented limits unchanged).
+

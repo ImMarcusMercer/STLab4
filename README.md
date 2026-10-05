@@ -2,7 +2,7 @@
 
 Independent implementation of the BCIS laboratory. The earlier student-information application remains in `../student-information-api` and is not a dependency of this project.
 
-**Current increment: Phase 5 payments, allocation and receipts.** Includes authentication, Owner user management, plan pricing/revisions, subscriber addresses, service accounts, areas/routes, collectors and audited assignments, plus billing cycles, immutable invoices, corrections, the account statement, and now payment collection with oldest-due-first allocation, advance credit, gap-free receipts, GCash proof verification by a second user, void and reversal. Collection batches, remittances, receivables, reports and printing remain pending. See [TASK.md](TASK.md).
+**Current increment: Phase 10 QA, documentation and defense.** All Phases 1–9 are complete; Phase 10 delivers acceptance evidence (AT-01–AT-12), the demonstration dataset, technical documentation (ERD), a user manual, report/receipt samples, refreshed screenshots (including reports), and release/demonstration prep. See [TASK.md](TASK.md), [User Manual](docs/USER_MANUAL.md), [ERD](docs/ERD.md), [Acceptance](docs/ACCEPTANCE.md) and [Sample exports](docs/samples/README.md).
 
 Verification results and screenshots are recorded in [test evidence](docs/TEST_EVIDENCE.md).
 

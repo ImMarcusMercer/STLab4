@@ -1,0 +1,15 @@
+﻿Payment exceptions
+2026-09-01 to 2026-10-05
+Generated 2026-10-05 10:27:49 by BCIS Owner
+
+Date,Receipt,Account,Subscriber,Category,Method,Amount,Reason
+2026-10-05,,DEMO-S031,"Jurat, Grace.",Awaiting verification,GCASH,1299.00,—
+2026-10-05,RCT-2026-1053,DEMO-S001,"Abad, Allyn.",Reversal,GCASH,4494.00,Demonstration reversal: the payment was posted against the wrong account.
+2026-10-01,,DEMO-S031,"Jurat, Grace.",Voided receipt,GCASH,1299.00,The customer sent the wrong reference; recorded against the wrong account.
+
+Value of exceptions in period,,,,,,7092.00,
+
+Reconciliation,Sum of rows,Stated total,Result
+Rows equal the stated amount,7092.00,7092.00,Balanced
+
+Voided receipts and reversals keep their number and their history. A pending GCash claim is unverified and has not been posted.

@@ -254,6 +254,7 @@ Historical totals are a comparison point, not a fixed requirement for future cod
 | REC-01 to REC-18 | Not run | Phase 7 is covered by automated tests; the manual walkthrough above has not been performed by a human | Run and record before defence |
 | COL-01 to COL-20 | Not run | Phase 6 is covered by automated tests; the manual walkthrough above has not been performed by a human | Run and record before defence |
 | PAY-01 to PAY-20, and the other `[NOT RECOVERED]` sections | Not run | Reconstructed from the specification; never executed as written | — |
+| AT-01 to AT-12 | Pass 2026-10-05 | Every acceptance case in section 7 has evidence that runs today; the matrix, the artifacts and the defect log are in `docs/ACCEPTANCE.md` (186 integration tests in 11 files, 200 unit tests, 19 E2E tests) | Two defects found and fixed while writing it: the Phase 5 payment API suite had been deleted from the repository while the evidence still claimed it, and AT-09 had no concurrent-payment test. Manual `PAY-*`/`COL-*`/`REC-*` steps remain unticked above |
 
 Defect template:
 
@@ -273,9 +274,18 @@ Retest result:
 
 Do not mark these as passed based on Phases 1–7: financial reports, exports and subscriber
 statements; backup and restore of the proof directory; installer delivery; production LAN
-hardening; 20,000-subscriber load tests; physical three-PC financial posting. These remain
-Phases 8–10. Current permission tests cover implemented operations only and do not complete
-every part of the laboratory's AT-10.
+hardening; 20,000-subscriber load tests; physical three-PC financial posting. Reports and
+exports (Phase 8), backup/restore (Phase 9), the load target (Phase 9) and the installer
+(LAN deployment documented) have since been completed and carry their own evidence; physical
+LAN hardening, physical three-PC posting and a human review of the screenshots remain open
+for Phase 10.
+
+AT-10 as written — a cashier attempting an admin-only user or backup operation and the server
+refusing it even when the API is called directly — is covered by automated evidence now:
+`tests/integration/auth.test.ts` (*AT-10: cashier cannot list/create users even through direct
+HTTP*), `tests/integration/backups.test.ts` (*will not let a cashier restore, however it is
+asked*), plus a per-screen permission case in every other integration suite. See the matrix in
+`docs/ACCEPTANCE.md`. The manual SEC-01 to SEC-03 review items above are still unticked.
 
 Collection routes, printed route sheets, batch lifecycle, remittances, shortage/overage
 and authorised reconciliation are implemented in Phase 6 and are covered by the

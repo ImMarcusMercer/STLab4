@@ -1,0 +1,16 @@
+﻿Collection summary
+2026-09-01 to 2026-10-05
+Generated 2026-10-05 10:27:49 by BCIS Owner
+
+Period,Method,Receipts,Collected,Customer credit held
+September 2026,CASH,10,37080.00,0.00
+September 2026,GCASH,5,13960.00,0.00
+October 2026,CASH,4,3706.00,0.00
+
+Total collected,,19,54746.00,0.00
+
+Reconciliation,Sum of rows,Stated total,Result
+Rows equal the stated collected,54746.00,54746.00,Balanced
+Rows equal the stated customer credit held,0.00,0.00,Balanced
+
+"Collected counts each posted receipt once, in the period it was received. Customer credit held is collected money not yet applied to an invoice."
