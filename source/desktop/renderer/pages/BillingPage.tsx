@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, FilePlus2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, FilePlus2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import type { Actor } from '../../../shared/auth';
 import type { MasterList, MasterRecord } from '../../../shared/master-data';
 import {
@@ -77,7 +77,7 @@ function CyclesTab({ revision, canGenerate, onUnauthorized, onChanged }: { revis
     finally { setBusy(false); }
   }
   return <div>
-    <div className="page-heading"><div><p className="eyebrow">BILLING</p><h1>Billing cycles</h1><p className="muted">Generate a monthly period. Re-running a period issues nothing twice and fills only the slots a void released.</p></div></div>
+    <div className="page-heading"><div><p className="eyebrow">BILLING</p><h1>Billing cycles</h1><p className="muted">Create invoices for a month. Running the same month again will not duplicate issued invoices.</p></div></div>
     {error && <div className="form-alert" role="alert">{error}</div>}{notice && <div className="success-notice" role="status">{notice}</div>}
     {canGenerate && <section className="panel billing-command">
       <div className="billing-command-fields">
@@ -96,7 +96,7 @@ function CyclesTab({ revision, canGenerate, onUnauthorized, onChanged }: { revis
         {(cycles?.items ?? []).map(cycle => !cycle.generated && <tr key={cycle.code}><td><strong>{periodLabel(cycle.code)}</strong><small className="current-user">{cycle.code}</small></td><td>{cycle.periodStart} → {cycle.periodEnd}</td><td>—</td><td className="money-cell">—</td><td><span className="badge neutral">Not generated</span></td></tr>)}
       </tbody></table>{(!runs?.items.length && !cycles?.items.length) && <p className="table-state">No billing period has been generated yet.</p>}</div>}
     </section>
-    <p className="info-note">A run is idempotent: the stored run is reused, services that already hold a finalised invoice for the period are reported as skipped, and a voided document is replaced by a new document with a new number. Invoice numbers are never reused.</p>
+    <p className="info-note">Services already invoiced for the month are skipped. A replacement for a voided invoice receives a new number.</p>
   </div>;
 }
 
@@ -118,7 +118,7 @@ function InvoicesTab({ revision, canGenerate, onUnauthorized, onChanged }: { rev
   return <div>
     <div className="page-heading"><div><p className="eyebrow">BILLING</p><h1>Invoices</h1><p className="muted">Search issued and draft documents. Line items, numbers and totals are never edited after issue.</p></div>{canGenerate && <button className="primary-button" onClick={() => setDialog({ kind: 'new' })}><FilePlus2 size={16} />New invoice</button>}</div>
     {error && <div className="form-alert" role="alert">{error}</div>}{notice && <div className="success-notice" role="status">{notice}</div>}
-    <div className="master-toolbar"><input aria-label="Search invoices" placeholder="Invoice number, subscriber or service…" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><select aria-label="Filter invoice status" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{(['DRAFT', 'UNPAID', 'PARTIALLY_PAID', 'OVERDUE', 'PAID', 'VOID'] as InvoiceStatus[]).map((value) => <option key={value}>{value}</option>)}</select><button className="refresh-button" disabled={loading} onClick={() => setPage(1)}><RefreshCw size={14} />Refresh</button></div>
+    <div className="master-toolbar"><input aria-label="Search invoices" placeholder="Invoice number, subscriber or service…" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><select aria-label="Filter invoice status" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{(['DRAFT', 'UNPAID', 'PARTIALLY_PAID', 'OVERDUE', 'PAID', 'VOID'] as InvoiceStatus[]).map((value) => <option key={value}>{value}</option>)}</select><button className="refresh-button" disabled={loading} onClick={() => { setPage(1); onChanged(); }}><RefreshCw size={14} />Refresh</button></div>
     <section className="users-table-panel" aria-busy={loading}><header><h2>{data?.total ?? 0} invoices</h2><span className="muted">Page {page} of {Math.max(1, Math.ceil((data?.total ?? 0) / 20))}</span></header>
       {loading ? <p className="table-state" role="status">Loading invoices…</p> : <div className="table-scroll"><table><thead><tr><th>Invoice</th><th>Subscriber</th><th>Service</th><th>Issue / due</th><th>Total</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead><tbody>
         {data?.items.map((invoice) => <tr key={invoice.id}>
@@ -165,7 +165,7 @@ function LedgerTab({ onUnauthorized }: { onUnauthorized(): void }) {
     return () => { current = false; };
   }, [selected, from, to]);
   return <div>
-    <div className="page-heading"><div><p className="eyebrow">ACCOUNT STATEMENT</p><h1>Subscriber ledger</h1><p className="muted">Every posted debit, credit and reversal in date order, with the running balance the API reproduced from those entries.</p></div></div>
+    <div className="page-heading"><div><p className="eyebrow">ACCOUNT STATEMENT</p><h1>Subscriber ledger</h1><p className="muted">Review charges, payments, adjustments and the running balance in date order.</p></div></div>
     {error && <div className="form-alert" role="alert">{error}</div>}
     <div className="master-toolbar">
       <input aria-label="Search subscriber for the ledger" placeholder="Subscriber code or name…" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -182,7 +182,7 @@ function LedgerTab({ onUnauthorized }: { onUnauthorized(): void }) {
         {data?.items.map((entry) => <tr key={entry.id}><td>{entry.entryNo}</td><td>{entry.entryDate}</td><td><strong>{entry.invoiceNumber ?? entry.referenceType}</strong><small className="current-user">{entry.referenceType}</small></td><td>{entry.description}</td><td className="money-cell">{entry.debitCentavos ? money(entry.debitCentavos) : '—'}</td><td className="money-cell">{entry.creditCentavos ? money(entry.creditCentavos) : '—'}</td><td className="money-cell">{money(entry.balanceCentavos)}</td></tr>)}
       </tbody><tfoot><tr><td colSpan={4}>Statement totals</td><td className="money-cell">{money(data?.totalDebitCentavos ?? 0)}</td><td className="money-cell">{money(data?.totalCreditCentavos ?? 0)}</td><td className="money-cell">{money(data?.closingBalanceCentavos ?? 0)}</td></tr></tfoot></table>{data && !data.items.length && <p className="table-state">No statement lines in this period.</p>}</div>}
     </section>}
-    {!selected && <p className="info-note"><Search size={19} />Search for a subscriber to open the account ledger. The running balance is rebuilt by the API from the append-only entries, so a statement can never show a balance that its own lines do not support.</p>}
+    {!selected && <p className="info-note">Search for a subscriber to open their account ledger.</p>}
   </div>;
 }
 

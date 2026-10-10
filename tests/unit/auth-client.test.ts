@@ -5,6 +5,15 @@ import { DashboardSchema, ReportTableSchema, emptyTable } from '../../source/sha
 
 const actor = { id: '11111111-1111-4111-8111-111111111111', username: 'owner', displayName: 'Owner', active: true, roles: ['OWNER'], permissions: ['user.manage'] };
 describe('desktop session boundary', () => {
+  it('keeps an HTTP failure distinct from a lost connection when the response is not JSON', async () => {
+    const api = Fastify();
+    api.post('/api/v1/auth/login', (_, reply) => reply.code(503).type('text/plain').send('temporarily unavailable'));
+    const url = await api.listen({ host: '127.0.0.1', port: 0 });
+    try {
+      const result = await new AuthClient(url).login({ username: 'owner', password: 'synthetic-password' });
+      expect(result).toEqual({ ok: false, error: { status: 503, message: 'The office system could not complete the request. Try again or contact your administrator.' } });
+    } finally { await api.close(); }
+  });
   it('keeps the token in main, sends it to the API, and clears it after revocation', async () => {
     const api = Fastify();
     const token = 'a'.repeat(64);

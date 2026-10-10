@@ -1,3 +1,23 @@
+BCIS demonstration accounts
+
+username: demo-admin, demo-cashier, demo-supervisor, demo-auditor, demo-viewer, demo-technician
+password: Demo-GPiwm1_bHugB-Fp0s_sfb
+
+Synthetic laboratory data only. Delete this file before any submission.
+Role	                Username	            Password
+Owner	                owner	                70679407fdf0e5ad99922f95b759986e2e6a823248414356
+Administrator	        demo-admin	            Demo-GPiwm1_bHugB-Fp0s_sfb
+Cashier	                demo-cashier	        Same demo password
+Collection Supervisor	demo-supervisor	        Same demo password
+Auditor	                demo-auditor	        Same demo password
+Viewer	                demo-viewer	            Same demo password
+Technician	            demo-technician	        Same demo password
+
+npm.cmd run db:start
+npm.cmd run dev
+
+npm.cmd run db:stop
+
 # BCIS Subscription Billing and Collection System
 
 Independent implementation of the BCIS laboratory. The earlier student-information application remains in `../student-information-api` and is not a dependency of this project.

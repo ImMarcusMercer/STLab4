@@ -65,7 +65,7 @@ function NewInvoiceDialog({ onClose, onUnauthorized, onSaved }: { onClose(): voi
       <fieldset className="line-fieldset"><legend>Invoice lines</legend>
         <LineEditor lines={lines} onChange={setLines} disabled={busy} />
       </fieldset>
-      <p className="muted">The API validates every line, signs discounts, recomputes the total and stores the document. A draft has no number until it is issued.</p>
+      <p className="muted">Review each line before saving. The invoice receives a number when you issue it.</p>
     </div>
     <footer className="account-form-footer"><button className="refresh-button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy} onClick={() => void submit()}>{busy ? 'Saving…' : 'Save draft'}</button></footer>
   </dialog>;
@@ -130,7 +130,7 @@ function InvoiceDialog({ id, intent, onClose, onUnauthorized, onSaved }: { id: s
       <div className="table-scroll"><table className="invoice-lines"><thead><tr><th>#</th><th>Type</th><th>Description</th><th>Plan</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead>
         <tbody>{invoice.items.map((item) => <tr key={item.id}><td>{item.lineNo}</td><td>{item.itemType}</td><td>{item.description}</td><td>{item.planCode ? `${item.planCode} v${item.planVersion ?? 1}` : '—'}</td><td>{item.quantity}</td><td className="money-cell">{money(item.unitPriceCentavos)}</td><td className="money-cell">{money(item.amountCentavos)}</td></tr>)}</tbody>
       </table></div>
-      <p className="muted">Subtotal {money(invoice.subtotalCentavos)} · adjustments {money(invoice.adjustmentCentavos)} · total {money(invoice.totalCentavos)}. These are the stored integers returned by the API.</p>
+      <p className="muted">Subtotal {money(invoice.subtotalCentavos)} · adjustments {money(invoice.adjustmentCentavos)} · total {money(invoice.totalCentavos)}.</p>
       {invoice.adjustments.length > 0 && <div className="history-list"><h3>Corrections</h3>{invoice.adjustments.map((adjustment) => <details key={adjustment.id}><summary><strong>{adjustment.adjustmentType}</strong> {money(adjustment.amountCentavos)} · {adjustment.actorName}<p>{adjustment.reason}</p></summary></details>)}</div>}
       {invoice.voidReason && <p className="muted">Voided: {invoice.voidReason}</p>}
       <div className="account-form">

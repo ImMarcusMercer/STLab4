@@ -111,12 +111,14 @@ export class AuthClient {
       });
       if (!response.ok) {
         if (response.status === 401 && this.#token === token) this.#token = null;
-        const parsed = ErrorResponse.safeParse(await response.json());
-        return { ok: false, error: { status: response.status, message: parsed.success ? parsed.data.error.message : 'The request could not be completed.', ...(parsed.success && parsed.data.error.fields ? { fields: parsed.data.error.fields } : {}) } };
+        let body: unknown;
+        try { body = await response.json(); } catch { /* An upstream error page may be plain text. */ }
+        const parsed = ErrorResponse.safeParse(body);
+        return { ok: false, error: { status: response.status, message: parsed.success ? parsed.data.error.message : 'The office system could not complete the request. Try again or contact your administrator.', ...(parsed.success && parsed.data.error.fields ? { fields: parsed.data.error.fields } : {}) } };
       }
       return { ok: true, data: schema.parse(response.status === 204 ? null : await response.json()) };
     } catch {
-      return { ok: false, error: { status: 0, message: 'The BCIS server could not complete the request. Check the connection and try again.' } };
+      return { ok: false, error: { status: 0, message: 'Could not reach the office system. Check your network and try again.' } };
     }
   }
 

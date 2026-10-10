@@ -124,7 +124,7 @@ function CollectTab({ revision, canCreate, onUnauthorized, onChanged }: { revisi
   }
 
   return <div>
-    <div className="page-heading"><div><p className="eyebrow">COLLECTIONS</p><h1>Collect payment</h1><p className="muted">Open the account, take the money and let the API settle the oldest invoice first. Every receipt number is issued by the server.</p></div></div>
+    <div className="page-heading"><div><p className="eyebrow">COLLECTIONS</p><h1>Collect payment</h1><p className="muted">Choose a subscriber, review the balance and record the amount received. Payments are applied to the oldest invoice first.</p></div></div>
     {error && <div className="form-alert" role="alert">{error}</div>}{notice && <div className="success-notice" role="status">{notice}</div>}
     <div className="master-toolbar">
       <input aria-label="Search subscriber to collect from" placeholder="Subscriber code or name…" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -157,7 +157,7 @@ function CollectTab({ revision, canCreate, onUnauthorized, onChanged }: { revisi
       </div>
       {method === 'GCASH' && <div className="billing-command-fields">
         <label>GCash reference number<input aria-label="GCash reference number" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={40} placeholder="e.g. 9A2B3C4D5E" />{fields.referenceNumber && <small className="field-error">{fields.referenceNumber.join(' ')}</small>}<small>Letters, digits and dashes. A reference already in use is refused.</small></label>
-        <label>GCash receipt<input ref={fileRef} aria-label="GCash receipt image" type="file" accept="image/png,image/jpeg,application/pdf" onChange={(event) => void attach(event.target.files?.[0] ?? null)} /><small>PNG, JPEG or PDF up to 5 MB. Stored on the server with a SHA-256 fingerprint.</small></label>
+        <label>GCash receipt<input ref={fileRef} aria-label="GCash receipt image" type="file" accept="image/png,image/jpeg,application/pdf" onChange={(event) => void attach(event.target.files?.[0] ?? null)} /><small>PNG, JPEG or PDF, up to 5 MB.</small></label>
       </div>}
       {proof && <p className="proof-chip"><Receipt size={14} />{proof.fileName} · {(proof.byteSize / 1024).toFixed(0)} KB<button type="button" className="text-button" aria-label="Remove attached receipt" onClick={clearProof}>Remove</button></p>}
       <label className="notes-field">Notes<input aria-label="Payment notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} /></label>
@@ -166,7 +166,7 @@ function CollectTab({ revision, canCreate, onUnauthorized, onChanged }: { revisi
         <div className="table-scroll"><table><thead><tr><th>Invoice</th><th>Due</th><th>Applied</th><th>Balance left</th></tr></thead><tbody>
           {preview.steps.map((step) => <tr key={step.item.invoiceId}><td>{step.item.invoiceNumber ?? 'Draft'}</td><td>{step.item.dueDate}</td><td className="money-cell">{money(step.amountCentavos)}</td><td className="money-cell">{money(step.balanceCentavos)}</td></tr>)}
         </tbody><tfoot><tr><td colSpan={2}>Applied to invoices</td><td className="money-cell">{money(preview.appliedCentavos)}</td><td className="money-cell">{preview.advanceCentavos > 0 ? `${money(preview.advanceCentavos)} advance` : '—'}</td></tr></tfoot></table></div>
-        <p className="muted">This preview follows the same oldest-due-first rule the API uses. The stored allocation comes from the server response.</p>
+        <p className="muted">This is how the payment will be applied, starting with the oldest amount due.</p>
       </div>}
       <div className="billing-command-actions">
         <button className="primary-button" aria-label="Record payment" disabled={busy || !amountCentavos || amountCentavos < 1} onClick={() => void submit()}>{busy ? 'Recording…' : 'Record payment'}</button>

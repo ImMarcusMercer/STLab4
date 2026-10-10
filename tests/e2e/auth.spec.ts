@@ -33,6 +33,9 @@ test('owner signs in, manages accounts, locks, unlocks and signs out', async () 
     await expect(page.getByRole('heading', { name: 'Sign in to BCIS' })).toBeVisible();
     await page.screenshot({ path: 'docs/screenshots/login.png', fullPage: true });
     await signIn(page, 'owner');
+    await expect(page.getByRole('heading', { name: 'Work areas' })).toBeVisible();
+    await expect(page.getByText('PROJECT ROADMAP')).toHaveCount(0);
+    await expect(page.locator('.workspace-link')).toHaveCount(9);
     await page.screenshot({ path: 'docs/screenshots/workspace.png', fullPage: true });
     await page.getByRole('button', { name: 'Administration', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'User accounts' })).toBeVisible();

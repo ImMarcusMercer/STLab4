@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { AlertTriangle, DatabaseBackup, HardDriveDownload, RefreshCw, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, HardDriveDownload, RefreshCw, RotateCcw, X } from 'lucide-react';
 import type { Actor } from '../../../shared/auth';
 import type { BackupRecord, BackupVerification, RestoreReport } from '../../../shared/backups';
 
@@ -30,9 +30,9 @@ const when = (value: string | null) => (value ? new Date(value).toLocaleString()
  */
 export function BackupsPage({ user, onUnauthorized }: Props) {
   const [backups, setBackups] = useState<BackupRecord[] | null>(null);
-  const [storagePath, setStoragePath] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [kind, setKind] = useState<'FULL' | 'DATABASE'>('FULL');
@@ -45,10 +45,10 @@ export function BackupsPage({ user, onUnauthorized }: Props) {
   const mayVerify = user.permissions.includes('backup.verify');
   const mayRestore = user.permissions.includes('backup.restore');
 
-  const load = () => {
-    setLoading(true); setError('');
+  const load = (clearError = true) => {
+    setLoading(true); if (clearError) setError('');
     void window.bcis.listBackups().then((result) => {
-      if (result.ok) { setBackups(result.data.backups); setStoragePath(result.data.storagePath); }
+      if (result.ok) setBackups(result.data.backups);
       else { setError(result.error.message); if (result.error.status === 401) onUnauthorized(); }
     }).catch(() => setError('Unable to load the backup history.')).finally(() => setLoading(false));
   };
@@ -60,22 +60,25 @@ export function BackupsPage({ user, onUnauthorized }: Props) {
       const result = await window.bcis.createBackup({ kind, note: note.trim() });
       if (result.ok) {
         setNote('');
-        setNotice(`Backup recorded: ${readableSize(result.data.byteSize)}, read back successfully by the server.`);
+        setNotice(`Backup complete (${readableSize(result.data.byteSize)}).`);
         load();
       } else {
         setError(result.error.message);
         if (result.error.status === 401) onUnauthorized();
-        else load();
+        else load(false);
       }
     } catch { setError('The backup request could not be completed. Check the connection and try again.'); }
     finally { setBusy(false); }
   }
 
   async function verify(record: BackupRecord) {
-    setError('');
-    const result = await window.bcis.verifyBackup(record.id);
-    if (result.ok) setChecks((current) => ({ ...current, [record.id]: result.data }));
-    else { setError(result.error.message); if (result.error.status === 401) onUnauthorized(); }
+    setError(''); setVerifyingId(record.id);
+    try {
+      const result = await window.bcis.verifyBackup(record.id);
+      if (result.ok) setChecks((current) => ({ ...current, [record.id]: result.data }));
+      else { setError(result.error.message); if (result.error.status === 401) onUnauthorized(); }
+    } catch { setError('The backup could not be verified. Check the connection and try again.'); }
+    finally { setVerifyingId(null); }
   }
 
   return <div className="backups-page">
@@ -87,15 +90,14 @@ export function BackupsPage({ user, onUnauthorized }: Props) {
     {notice && <div className="success-notice" role="status">{notice}</div>}
 
     {mayCreate && <section className="panel backup-request">
-      <div className="panel-top"><span className="panel-symbol"><DatabaseBackup size={20} /></span><span className="badge blue">Server-side</span></div>
       <h3>What to include</h3>
-      <p>A <strong>full</strong> backup carries the database and the GCash payment proofs together, which is what “a backup of the office” means. A <strong>database</strong> backup is the dump on its own: quicker, and recorded as incomplete so nobody mistakes it for a full one.</p>
+      <p>Choose a full backup to protect office records and GCash payment proofs together. Use database only when you do not need those attachments.</p>
       <div className="backup-options">
         <label className="checkbox-label"><input type="radio" name="backup-kind" checked={kind === 'FULL'} onChange={() => setKind('FULL')} disabled={busy} />Full — database and payment proofs</label>
-        <label className="checkbox-label"><input type="radio" name="backup-kind" checked={kind === 'DATABASE'} onChange={() => setKind('DATABASE')} disabled={busy} />Database only — the dump without attachments</label>
+        <label className="checkbox-label"><input type="radio" name="backup-kind" checked={kind === 'DATABASE'} onChange={() => setKind('DATABASE')} disabled={busy} />Database only — without payment proofs</label>
       </div>
       <label className="backup-note">Note for the history<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={200} placeholder="Before the October reconciliation" disabled={busy} /></label>
-      <div className="panel-note"><ShieldCheck size={14} />The server lists the finished archive with pg_restore before recording it as complete</div>
+      <div className="panel-note">You can verify a completed backup from the history below.</div>
     </section>}
 
     {report && <RestoreReportPanel report={report} onClose={() => setReport(null)} />}
@@ -103,7 +105,7 @@ export function BackupsPage({ user, onUnauthorized }: Props) {
     <section className="users-table-panel" aria-busy={loading}>
       <header>
         <h2>{backups ? `${backups.length} backups on record` : 'Backup history'}</h2>
-        <button className="refresh-button" onClick={load} disabled={loading}><RefreshCw size={14} />Refresh</button>
+        <button className="refresh-button" onClick={() => load()} disabled={loading}><RefreshCw size={14} />Refresh</button>
       </header>
       {loading
         ? <p className="table-state" role="status">Loading the backup history…</p>
@@ -127,20 +129,16 @@ export function BackupsPage({ user, onUnauthorized }: Props) {
               </td>
               <td>
                 {record.status === 'COMPLETED' && <>
-                  {mayVerify && <button className="text-button" onClick={() => void verify(record)} aria-label={`Verify the backup of ${when(record.createdAt)}`}>Verify</button>}
+                  {mayVerify && <button className="text-button" disabled={verifyingId !== null} onClick={() => void verify(record)} aria-label={`Verify the backup of ${when(record.createdAt)}`}>{verifyingId === record.id ? 'Verifying…' : 'Verify'}</button>}
                   {mayRestore && <button className="text-button danger" onClick={() => setRestoring(record)} aria-label={`Restore the backup of ${when(record.createdAt)}`}><RotateCcw size={13} />Restore</button>}
                 </>}
               </td>
             </tr>;
           })}</tbody>
         </table>{backups?.length === 0 && <p className="table-state">No backups have been taken yet.</p>}</div>}
-      <footer><span>Archive folder on the server: {storagePath || '—'}</span></footer>
     </section>
     <div className="info-note">
-      <p><strong>A backup nobody has read back is a claim, not a backup.</strong> Each backup records the
-      SHA-256 of the file and the row counts it contained. Verifying compares those again, and a restore
-      reports the counts table by table, so a restore that came back with the wrong number of subscribers
-      says so by name instead of reporting plain success.</p>
+      <p>Verify backups regularly. After a restore, review the results to confirm that records and payment proofs were recovered.</p>
     </div>
     {restoring && <RestoreDialog backup={restoring} onClose={() => setRestoring(null)} onUnauthorized={onUnauthorized}
       onRestored={(result) => { setRestoring(null); setReport({ backup: restoring, result }); load(); }} />}
@@ -157,11 +155,11 @@ export function BackupsPage({ user, onUnauthorized }: Props) {
 function RestoreReportPanel({ report, onClose }: { report: { backup: BackupRecord; result: RestoreReport }; onClose(): void }) {
   const { result } = report;
   return <section className={`panel backup-report ${result.rowCountsMatched ? '' : 'attention'}`} aria-live="polite">
-    <div className="panel-top"><span className="panel-symbol">{result.rowCountsMatched ? <ShieldCheck size={20} /> : <AlertTriangle size={20} />}</span><span className={`badge ${result.rowCountsMatched ? 'good' : 'warn'}`}>{result.rowCountsMatched ? 'Counts matched' : 'Counts differ'}</span></div>
+    <div className="panel-top"><span className={`badge ${result.rowCountsMatched ? 'good' : 'warn'}`}>{result.rowCountsMatched ? 'Counts matched' : 'Counts differ'}</span></div>
     <h3>Restore of {when(report.backup.createdAt)} finished at {when(result.restoredAt)}</h3>
-    <p>The archive matched its recorded digest{result.attachmentsRestored ? `, and ${result.attachmentsRestored} payment proof${result.attachmentsRestored === 1 ? '' : 's'} were put back` : ''}.</p>
+    <p>The backup file passed its integrity check{result.attachmentsRestored ? `, and ${result.attachmentsRestored} payment proof${result.attachmentsRestored === 1 ? '' : 's'} were restored` : ''}.</p>
     {result.differences.length > 0 && <table className="report-differences"><thead><tr><th>Table</th><th>In the backup</th><th>After the restore</th></tr></thead><tbody>{result.differences.map((difference) => <tr key={difference.table}><td>{difference.table}</td><td>{difference.expected}</td><td>{difference.actual}</td></tr>)}</tbody></table>}
-    <div className="panel-note"><ShieldCheck size={14} />The restore is in the audit trail with the reason that was given</div>
+    <div className="panel-note">The reason for this restore was recorded.</div>
     <footer><button className="refresh-button" onClick={onClose}>Dismiss</button></footer>
   </section>;
 }

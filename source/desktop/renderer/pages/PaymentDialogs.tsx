@@ -115,7 +115,7 @@ export function PaymentDialogs({ state, user, onClose, onUnauthorized, onSaved }
 
       {payment.proof && <div className="proof-preview">
         <h3>Attached receipt</h3>
-        <p className="muted">{payment.proof.originalName} · {(payment.proof.byteSize / 1024).toFixed(0)} KB · {payment.proof.mimeType} · SHA-256 {payment.proof.sha256.slice(0, 16)}…</p>
+        <p className="muted">{payment.proof.originalName} · {(payment.proof.byteSize / 1024).toFixed(0)} KB</p>
         {proof
           ? proof.mimeType === 'application/pdf'
             ? <iframe title="Payment receipt" src={`data:${proof.mimeType};base64,${proof.base64}`} />
@@ -134,12 +134,12 @@ export function PaymentDialogs({ state, user, onClose, onUnauthorized, onSaved }
             ? `Reversal receipt for ${payment.reversalOfReceipt}.`
             : payment.status === 'VOID'
               ? 'This payment was voided, so its receipt shows no money applied.'
-              : 'Produced by the server and recorded in the audit trail as a print.')}
+              : 'Save or print a copy for the customer.')}
         </small>
       </div>
 
       {mode === 'verify' && <div className="account-form">
-        {isOwnPayment && <p className="field-warning"><ShieldAlert size={15} />You recorded this payment. The API will refuse your confirmation, so ask another authorised user to check the reference.</p>}
+        {isOwnPayment && <p className="field-warning"><ShieldAlert size={15} />Another authorized staff member must confirm a payment you recorded. Ask them to check the GCash reference.</p>}
         <label>Confirmation note<input aria-label="Confirmation note" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} /><small>Optional. The reference is compared against the attached receipt by the person confirming.</small></label>
         <footer className="account-form-footer"><button className="refresh-button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy || isOwnPayment || !payment.proof} onClick={() => void act()}>{busy ? 'Confirming…' : 'Confirm and post'}</button></footer>
       </div>}

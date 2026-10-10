@@ -20,7 +20,7 @@ test('desktop connects to the real API and isolates the renderer', async () => {
       return { sandbox: p?.sandbox, contextIsolation: p?.contextIsolation, nodeIntegration: p?.nodeIntegration };
     });
     expect(prefs).toEqual({ sandbox: true, contextIsolation: true, nodeIntegration: false });
-    await page.getByRole('button', { name: 'Refresh connection' }).click();
+    await page.getByRole('button', { name: 'Check connection again' }).click();
     await expect(page.getByText('All systems connected', { exact: true })).toBeVisible();
     await page.screenshot({ path: 'docs/screenshots/connection.png', fullPage: true });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 700));
@@ -33,9 +33,9 @@ test('desktop shows an actionable error when the API cannot be reached', async (
   const app = await electron.launch({ args: ['.'], env: { ...desktopEnv, BCIS_API_URL: 'http://127.0.0.1:1' } });
   try {
     const page = await app.firstWindow();
-    await expect(page.getByText('API unavailable', { exact: true })).toBeVisible();
-    await expect(page.getByText(/Check that the server is running/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Refresh connection' })).toBeEnabled();
+    await expect(page.getByText('Connection unavailable', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Check the office network or ask your administrator/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Check connection again' })).toBeEnabled();
   } finally { await app.close(); }
 });
 
@@ -54,8 +54,7 @@ test('desktop distinguishes a database outage from an API outage', async () => {
   const app = await electron.launch({ args: ['.'], env: { ...desktopEnv, BCIS_API_URL: origin } });
   try {
     const page = await app.firstWindow();
-    await expect(page.getByText('Database needs attention', { exact: true })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'System connection' })).toContainText('API: Connected');
-    await expect(page.getByRole('region', { name: 'System connection' })).toContainText('Database: Not ready');
+    await expect(page.getByText('Office records unavailable', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'System connection' })).toContainText('ask your administrator');
   } finally { await app.close(); await server.close(); }
 });

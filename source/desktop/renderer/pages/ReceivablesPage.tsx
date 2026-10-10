@@ -158,7 +158,7 @@ function AgingTab({ user, onUnauthorized }: { user: Actor; onUnauthorized(): voi
           <button className="primary-button" type="submit" aria-label="Confirm disconnection" disabled={busy || reason.trim().length < 3}><ShieldAlert size={15}/>Disconnect service</button>
           <button className="text-button" type="button" aria-label="Cancel disconnection" onClick={() => { setSelected(null); setReason(''); }}>Cancel</button>
         </div>
-        <p className="muted">The API refuses a disconnection that does not meet the current policy, so an account below the threshold or inside the grace period cannot be cut off from here.</p>
+        <p className="muted">Accounts inside the grace period or below the overdue threshold cannot be disconnected.</p>
       </form>;
     })()}
 
@@ -259,7 +259,7 @@ function SuspensionsTab({ user, onUnauthorized }: { user: Actor; onUnauthorized(
       </li>)}</ol>
     </div>}
 
-    <p className="info-note">A service may only be suspended or restored through these commands, and the database refuses any other way of changing it. The receivable frozen onto the document is what was owed on the effective date, so a later payment or policy change cannot rewrite it.</p>
+    <p className="info-note">The suspension record keeps the amount owed on the effective date. Later payments and policy changes do not alter that record.</p>
   </>;
 }
 
@@ -319,6 +319,6 @@ function PolicyTab({ user, onUnauthorized }: { user: Actor; onUnauthorized(): vo
       <p className="muted">Amounts are entered in centavos. {policy && `The reconnection fee is currently ${moneyLabel(policy.reconnectionFeeCentavos)}.`}</p>
     </form>
 
-    <p className="info-note">Automatic suspension is a policy flag only. Even with it on, a disconnection is raised as a document with a reason and an approving user, and the database still refuses any change to a service status that was not made through those commands.</p>
+    <p className="info-note">Turning on automatic suspension does not disconnect anyone by itself. Each disconnection still needs a recorded reason and approval.</p>
   </>;
 }

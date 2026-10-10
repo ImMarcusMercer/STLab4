@@ -13,7 +13,7 @@
 ### System Functionality Summary
 - Authentication & RBAC (OWNER, ADMIN, CASHIER, SUPERVISOR, AUDITOR, TECHNICIAN, VIEWER)
 - Master data: plans, subscribers, services, areas, collectors
-- Billing: cycles, invoices, corrections, statements, ledger
+- Billing: cycles, invoices, corrections, statements, ledger  
 - Payments: oldest-due-first allocation, advance credit, GCash verification, void/reversal, receipts
 - Collections: routes, remittances, shortage/overage, two-person reconciliation
 - Receivables: aging, suspension/reconnection, service history

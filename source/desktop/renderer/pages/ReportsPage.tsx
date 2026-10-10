@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Download, FileSpreadsheet, FileText, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Download, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { Actor } from '../../../shared/auth';
 import { agingBucketLabels } from '../../../shared/receivables';
 import {
@@ -72,9 +72,8 @@ function DashboardTab({ onUnauthorized }: { onUnauthorized(): void }) {
       <div>
         <p className="eyebrow">MANAGEMENT DASHBOARD</p>
         <h1>How the office is doing</h1>
-        <p className="muted">Six figures, the aging split, the monthly trend and the accounts that need chasing today. Everything is read live from posted financial rows, so it cannot drift away from the invoices behind it.</p>
+        <p className="muted">Review key figures, monthly trends and accounts that need follow-up.</p>
       </div>
-      <span className="heading-icon"><FileText size={29} /></span>
     </div>
     {error && <div className="form-alert" role="alert">{error}</div>}
 
@@ -178,7 +177,7 @@ function DashboardTab({ onUnauthorized }: { onUnauthorized(): void }) {
         </section>
       </div>
 
-      <p className="info-note"><ShieldCheck size={16} />Every figure above was computed by the API from posted invoices, payments and remittances at the moment you opened this page. Nothing here is a stored snapshot, so it cannot show a total that the underlying rows no longer support.</p>
+      <p className="info-note">Figures reflect posted invoices, payments and remittances as of the selected date.</p>
     </>}
   </>;
 }
@@ -238,7 +237,7 @@ function ReportTab({ onUnauthorized, canExport }: { onUnauthorized(): void; canE
       const result = await window.bcis.exportReport(code, filters, format);
       if (!result.ok) setError(result.error.message);
       // A cancelled dialog is not a failure, so it gets a plain sentence rather than an alert.
-      else if (result.data.saved) setNotice(`${result.data.fileName} was saved. The server built the file and filed an audit entry for this export.`);
+      else if (result.data.saved) setNotice(`${result.data.fileName} was saved.`);
       else setNotice('The save was cancelled. Nothing was written.');
     } catch { setError('The export could not be produced. Nothing was saved.'); }
     finally { setSaving(null); }
@@ -251,7 +250,6 @@ function ReportTab({ onUnauthorized, canExport }: { onUnauthorized(): void; canE
         <h1>{definition.title}</h1>
         <p className="muted">{definition.description}</p>
       </div>
-      <span className="heading-icon"><FileSpreadsheet size={29} /></span>
     </div>
     {error && <div className="form-alert" role="alert">{error}</div>}
     {notice && <div className="success-notice" role="status">{notice}</div>}
@@ -288,7 +286,7 @@ function ReportTab({ onUnauthorized, canExport }: { onUnauthorized(): void; canE
       {(['PDF', 'XLSX', 'CSV'] as ExportFormat[]).map(format => <button key={format} className="refresh-button" aria-label={`Save as ${format}`} disabled={saving !== null || (definition.requiresSubscriber && !subscriberId)} onClick={() => void save(format)}>
         <Download size={14} />{saving === format ? 'Preparing…' : format}
       </button>)}
-      <span className="muted">The file is produced by the API, so an exported report always matches the table above.</span>
+      <span className="muted">Save the current report in your preferred format.</span>
     </div>}
 
     {definition.snapshot && <p className="muted">This report is a snapshot of one day. It answers &ldquo;what is owed on {to}&rdquo; and cannot be asked for a range.</p>}
@@ -320,7 +318,7 @@ function ReportTab({ onUnauthorized, canExport }: { onUnauthorized(): void; canE
 
       {table.reconciliations.length > 0 && <div className="reconciliation" role="note">
         <ShieldCheck size={15} />
-        <span><strong>Checked:</strong> {table.reconciliations.map(entry => `${entry.label} — rows ${formatMoneyCell(entry.summedCentavos, false)} against the stated ${formatMoneyCell(entry.statedCentavos, false)}`).join('; ')}. The API refuses to publish a report whose rows disagree with its totals.</span>
+        <span><strong>Totals checked:</strong> {table.reconciliations.map(entry => `${entry.label} — rows ${formatMoneyCell(entry.summedCentavos, false)} against the stated ${formatMoneyCell(entry.statedCentavos, false)}`).join('; ')}.</span>
       </div>}
       {table.footnote && <p className="muted">{table.footnote}</p>}
     </>}

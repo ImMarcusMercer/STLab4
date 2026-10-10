@@ -183,7 +183,7 @@ export function CollectionBatchPanel({ batchId, user, onUnauthorized, onChanged 
         <button className="primary-button" aria-label="Record collection on route" disabled={busy || !accountId} onClick={() => void collect()}>{method === 'CASH' ? <Banknote size={15}/> : <Smartphone size={15}/>} {busy ? 'Recording…' : 'Record collection'}</button>
         {account && account.totalDueCentavos > 0 && <button className="refresh-button" aria-label="Fill full due amount" onClick={() => setAmount(decimalMoney(Math.max(0, account.totalDueCentavos - account.collectedCentavos)))}>Use full balance</button>}
       </div>
-      <p className="muted">The receipt number, the invoice allocation and the route totals are all decided by the API. A GCash claim waits for confirmation by a second person before it counts as collected.</p>
+      <p className="muted">GCash payments count toward collection totals after a second staff member confirms them.</p>
     </section>}
 
     <div className="table-scroll collection-accounts">
